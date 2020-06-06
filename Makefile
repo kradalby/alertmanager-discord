@@ -7,7 +7,7 @@ GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 BINARY_NAME=alertmanager-discord
-GO_MAIN=cmd/alertmanager-discord/main.go
+GO_MAIN=./cmd/alertmanager-discord/main.go
 
 .PHONY: all vendor
 

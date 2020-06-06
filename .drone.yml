@@ -7,7 +7,10 @@
    },
    "steps": [
       {
-         "image": "banzaicloud/drone-kaniko:0.5.1",
+         "environment": {
+            "DOCKER_BUILDKIT": 1
+         },
+         "image": "plugins/docker",
          "name": "Build container image",
          "pull": "always",
          "when": {
@@ -19,7 +22,10 @@
          }
       },
       {
-         "image": "banzaicloud/drone-kaniko:0.5.1",
+         "environment": {
+            "DOCKER_BUILDKIT": 1
+         },
+         "image": "plugins/docker",
          "name": "Publish image kradalby/alertmanager-discord",
          "pull": "always",
          "settings": {
