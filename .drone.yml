@@ -8,7 +8,7 @@
    "steps": [
       {
          "environment": {
-            "DOCKER_BUILDKIT": 1
+            "DOCKER_BUILDKIT": 0
          },
          "image": "plugins/docker",
          "name": "Build container image",
@@ -23,7 +23,7 @@
       },
       {
          "environment": {
-            "DOCKER_BUILDKIT": 1
+            "DOCKER_BUILDKIT": 0
          },
          "image": "plugins/docker",
          "name": "Publish image kradalby/alertmanager-discord",
