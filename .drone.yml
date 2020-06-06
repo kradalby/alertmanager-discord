@@ -7,15 +7,6 @@
    },
    "steps": [
       {
-         "commands": [
-            "make install",
-            "make lint"
-         ],
-         "image": "node:10",
-         "name": "Node lint",
-         "pull": "always"
-      },
-      {
          "environment": {
             "DOCKER_BUILDKIT": 1
          },
