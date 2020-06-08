@@ -6,7 +6,7 @@ but has mostly been rewritten.
 
 Give this a webhook (with the DISCORD_WEBHOOK environment variable) and point it as a webhook on alertmanager, and it will post your alerts into a discord channel for you as they trigger.
 
-![](.github/screenshot.png | width=400)
+<img src=".github/screenshot.png" width="400px">
 
 Example alert manager config:
 
