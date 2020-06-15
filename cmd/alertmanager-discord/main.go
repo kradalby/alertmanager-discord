@@ -74,8 +74,8 @@ const alertTemplateStr string = `
 {{- end -}}
 
 {{- define "__alert_instance" -}}
-  {{- if .Alert.Annotations.instance -}}
-	{{ .Alert.Annotations.instance }}
+  {{- if .Alert.Labels.instance -}}
+	{{ .Alert.Labels.instance }}
   {{- else -}}
 	No instance found
   {{- end -}}
