@@ -57,7 +57,7 @@ const alertTemplateStr string = `
   {{- else if .Alert.Annotations.runbook_url -}}
 	[Runbook]({{- .Alert.Annotations.runbook_url -}})
   {{- else -}}
-	No runbook found
+	No runbook annotation found
   {{- end -}}
 {{- end -}}
 
@@ -74,15 +74,22 @@ const alertTemplateStr string = `
 {{- end -}}
 
 {{- define "__alert_instance" -}}
-  {{- if .Alert.Labels.instance -}}
-	{{ .Alert.Labels.instance }}
-  {{- else -}}
-	No instance found
-  {{- end -}}
+  {{- if .Alert.Labels.instance }}
+**Instance:**
+{{ .Alert.Labels.instance }}
+  {{ end -}}
 {{- end -}}
 
-**Instance:**
+{{- define "__alert_job" -}}
+  {{- if .Alert.Labels.job }}
+**Job:**
+{{ .Alert.Labels.job }}
+  {{ end -}}
+{{- end -}}
+
 {{ template "__alert_instance" . }}
+
+{{ template "__alert_job" . }}
 
 **Description:**
 {{ template "__alert_description" . }}
