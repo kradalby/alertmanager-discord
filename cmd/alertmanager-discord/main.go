@@ -87,10 +87,24 @@ const alertTemplateStr string = `
   {{ end -}}
 {{- end -}}
 
-{{ template "__alert_instance" . }}
+{{- define "__alert_namespace" -}}
+  {{- if .Alert.Labels.namespace }}
+**Namespace:**
+{{ .Alert.Labels.namespace }}
+  {{ end -}}
+{{- end -}}
 
-{{ template "__alert_job" . }}
+{{- define "__alert_site" -}}
+  {{- if .Alert.Labels.site }}
+**Site:**
+{{ .Alert.Labels.site }}
+  {{ end -}}
+{{- end -}}
 
+{{- template "__alert_instance" . }}
+{{- template "__alert_job" . }}
+{{- template "__alert_site" . }}
+{{- template "__alert_namespace" . }}
 **Description:**
 {{ template "__alert_description" . }}
 
@@ -100,6 +114,8 @@ const alertTemplateStr string = `
 [Alert]({{ .Alert.GeneratorURL }})
 {{ template "__alert_runbook_link" . }}
 [Silence]({{ template "__alert_silence_link" . }})
+
+
 `
 const (
 	colorRed   = 14177041
@@ -220,11 +236,11 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 	}
 
 	fields := []DiscordEmbedField{
-		{
-			Name:   "Severity",
-			Value:  getSeverity(data),
-			Inline: true,
-		},
+		// {
+		// 	Name:   "Severity",
+		// 	Value:  getSeverity(data),
+		// 	Inline: true,
+		// },
 	}
 
 	for _, alert := range alerts {
@@ -241,7 +257,7 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 			log.Printf("error: failed to build message from template %s", err)
 		}
 		field := DiscordEmbedField{
-			Name:  getInstance(&alert),
+			Name:  "Information",
 			Value: tpl.String(),
 		}
 		fields = append(fields, field)
