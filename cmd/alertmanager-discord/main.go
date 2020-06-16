@@ -115,7 +115,7 @@ const alertTemplateStr string = `
 {{ template "__alert_runbook_link" . }}
 [Silence]({{ template "__alert_silence_link" . }})
 
-
+--------------------------------
 `
 const (
 	colorRed   = 14177041
