@@ -17,6 +17,8 @@ import (
 )
 
 const alertTemplateStr string = `
+--------------------------------
+
 {{- define "__alert_silence_link" -}}
     {{ .ExternalURL }}/#/silences/new?filter=%7B
     {{- range .Alert.Labels.SortedPairs -}}
@@ -114,8 +116,6 @@ const alertTemplateStr string = `
 [Alert]({{ .Alert.GeneratorURL }})
 {{ template "__alert_runbook_link" . }}
 [Silence]({{ template "__alert_silence_link" . }})
-
---------------------------------
 `
 const (
 	colorRed   = 14177041
