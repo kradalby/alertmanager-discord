@@ -17,8 +17,6 @@ import (
 )
 
 const alertTemplateStr string = `
---------------------------------
-
 {{- define "__alert_silence_link" -}}
     {{ .ExternalURL }}/#/silences/new?filter=%7B
     {{- range .Alert.Labels.SortedPairs -}}
@@ -27,6 +25,12 @@ const alertTemplateStr string = `
         {{- end -}}
     {{- end -}}
     alertname%3D"{{ .Alert.Labels.alertname }}"%7D
+{{- end -}}
+
+{{- define "__alertmanager_link" -}}
+  {{- $name := .ExternalURL | trimPrefix "https://" -}}
+  {{- $name = $name | trimPrefix "https://" -}}
+  [{{ $name }}]({{ .ExternalURL }})
 {{- end -}}
 
 {{- define "__alert_severity_prefix" -}}
@@ -103,6 +107,8 @@ const alertTemplateStr string = `
   {{ end -}}
 {{- end -}}
 
+--------------------------------
+
 {{- template "__alert_instance" . }}
 {{- template "__alert_job" . }}
 {{- template "__alert_site" . }}
@@ -113,9 +119,10 @@ const alertTemplateStr string = `
 **Severity:**
 {{ template "__alert_severity" . }}
 
-[Alert]({{ .Alert.GeneratorURL }})
+[Source]({{ .Alert.GeneratorURL }})
 {{ template "__alert_runbook_link" . }}
 [Silence]({{ template "__alert_silence_link" . }})
+Sent by: {{ template "__alertmanager_link" . }}
 `
 const (
 	colorRed   = 14177041
