@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -124,6 +125,7 @@ const alertTemplateStr string = `
 [Silence]({{ template "__alert_silence_link" . }})
 Sent by: {{ template "__alertmanager_link" . }}
 `
+
 const (
 	colorRed   = 14177041
 	colorGreen = 3394560
@@ -187,47 +189,14 @@ func getStatusEmoji(alert *alertmanager.Alert) string {
 	}
 }
 
-func getInstance(alert *alertmanager.Alert) string {
-	if name, ok := alert.Labels["instance"]; ok {
-		return name
-	}
-	return "no instance name found"
-}
-
-func getDescription(alert *alertmanager.Alert) string {
-	if desc, ok := alert.Annotations["description"]; ok {
-		return desc
-	} else if desc, ok := alert.Annotations["message"]; ok {
-		return desc
-	} else if desc, ok := alert.Annotations["summary"]; ok {
-		return desc
-	}
-	return "no description found"
-}
-
-func getRunBook(alert *alertmanager.Alert) string {
-	if url, ok := alert.Annotations["runbook_url"]; ok {
-		return url
-	} else if url, ok := alert.Annotations["runbook"]; ok {
-		return url
-	}
-	return "no runbook found"
-}
-
 func getAlertname(a *alertmanager.Data) string {
 	if name, ok := a.CommonLabels["alertname"]; ok {
 		return name
 	} else if name, ok := a.GroupLabels["alertname"]; ok {
 		return name
 	}
-	return "no alertname found"
-}
 
-func getSeverity(a *alertmanager.Data) string {
-	if sev, ok := a.CommonLabels["severity"]; ok {
-		return sev
-	}
-	return "no severity found"
+	return "no alertname found"
 }
 
 func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertmanager.Alert) DiscordEmbed {
@@ -263,6 +232,7 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 		if err != nil {
 			log.Printf("error: failed to build message from template %s", err)
 		}
+
 		field := DiscordEmbedField{
 			Name:  "Information",
 			Value: tpl.String(),
@@ -271,15 +241,16 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 	}
 
 	embed.Fields = fields
+
 	return embed
 }
 
 func main() {
-	webhookUrl := os.Getenv("DISCORD_WEBHOOK")
-	whURL := flag.String("webhook.url", webhookUrl, "")
+	webhookURL := os.Getenv("DISCORD_WEBHOOK")
+	whURL := flag.String("webhook.url", webhookURL, "")
 	flag.Parse()
 
-	if webhookUrl == "" && *whURL == "" {
+	if webhookURL == "" && *whURL == "" {
 		fmt.Fprintf(os.Stderr, "error: environment variable DISCORD_WEBHOOK not found\n")
 		os.Exit(1)
 	}
@@ -291,6 +262,7 @@ func main() {
 	)
 
 	fmt.Fprintf(os.Stdout, "info: Listening on 0.0.0.0:9094\n")
+
 	err := http.ListenAndServe(":9094", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -320,11 +292,19 @@ func main() {
 		}
 
 		data, _ := json.Marshal(payload)
-		_, err = http.Post(*whURL, "application/json", bytes.NewReader(data))
+
+		req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, *whURL, bytes.NewReader(data))
+		if err != nil {
+			log.Printf("error: failed to create request %s", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			log.Printf("error: failed to post message to discord %s", err)
 		}
 
+		defer resp.Body.Close()
 	}),
 	)
 	if err != nil {
