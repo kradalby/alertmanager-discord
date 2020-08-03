@@ -221,6 +221,7 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 
 	for _, alert := range alerts {
 		var tpl bytes.Buffer
+
 		err := temp.Execute(&tpl, struct {
 			Alert       alertmanager.Alert
 			ExternalURL string
