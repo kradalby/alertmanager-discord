@@ -26,3 +26,9 @@ deps:
 
 vendor:
 	$(GOMOD) vendor
+
+fmt:
+	golangci-lint run --fix
+
+upgrade:
+	$(GOGET) -t -u ./...
