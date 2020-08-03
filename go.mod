@@ -9,6 +9,6 @@ require (
 	github.com/huandu/xstrings v1.3.1 // indirect
 	github.com/imdario/mergo v0.3.9 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
-	github.com/prometheus/alertmanager v0.20.0
+	github.com/prometheus/alertmanager v0.21.0
 	github.com/prometheus/common v0.10.0
 )
