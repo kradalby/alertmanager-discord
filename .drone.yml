@@ -21,9 +21,9 @@
       },
       {
          "commands": [
-            "golangci-lint run -v --timeout 10m"
+            "curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin"
          ],
-         "image": "golangci/golangci-lint:latest",
+         "image": "golang:1.15-buster",
          "name": "Go lint",
          "pull": "always"
       },
@@ -31,7 +31,7 @@
          "commands": [
             "go test ./..."
          ],
-         "image": "golang:1.14.4-stretch",
+         "image": "golang:1.15-buster",
          "name": "Go test",
          "pull": "always"
       },
@@ -133,9 +133,9 @@
       },
       {
          "commands": [
-            "golangci-lint run -v --timeout 10m"
+            "curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin"
          ],
-         "image": "golangci/golangci-lint:latest",
+         "image": "golang:1.15-buster",
          "name": "Go lint",
          "pull": "always"
       },
@@ -143,7 +143,7 @@
          "commands": [
             "go test ./..."
          ],
-         "image": "golang:1.14.4-stretch",
+         "image": "golang:1.15-buster",
          "name": "Go test",
          "pull": "always"
       },
