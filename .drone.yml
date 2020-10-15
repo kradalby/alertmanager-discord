@@ -1,5 +1,10 @@
 ---
 {
+   "dns_config": {
+      "nameservers": [
+         "1.1.1.1"
+      ]
+   },
    "kind": "pipeline",
    "name": "amd64",
    "node_selector": {
@@ -110,6 +115,11 @@
 }
 ---
 {
+   "dns_config": {
+      "nameservers": [
+         "1.1.1.1"
+      ]
+   },
    "kind": "pipeline",
    "name": "arm64",
    "node_selector": {
