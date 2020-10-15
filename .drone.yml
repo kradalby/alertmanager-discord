@@ -220,6 +220,52 @@
 }
 ---
 {
+   "depends_on": [
+      "amd64",
+      "arm64"
+   ],
+   "kind": "pipeline",
+   "name": "Docker manifests",
+   "node_selector": {
+      "drone": true
+   },
+   "steps": [
+      {
+         "image": "plugins/manifest",
+         "name": "Publish manifests kradalby/alertmanager-discord",
+         "pull": "always",
+         "settings": {
+            "ignore_missing": true,
+            "password": {
+               "from_secret": "docker_password"
+            },
+            "platforms": [
+               "linux/amd64",
+               "linux/arm64"
+            ],
+            "tags": [
+               "latest",
+               "${DRONE_COMMIT_SHA:0:8}"
+            ],
+            "target": "kradalby/alertmanager-discord",
+            "username": {
+               "from_secret": "docker_username"
+            }
+         },
+         "when": {
+            "branch": [
+               "master"
+            ],
+            "event": [
+               "push"
+            ]
+         }
+      }
+   ],
+   "type": "kubernetes"
+}
+---
+{
    "get": {
       "name": "id",
       "path": "discord-build"
