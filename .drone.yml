@@ -79,6 +79,7 @@
             "repo": "kradalby/alertmanager-discord",
             "tags": [
                "latest",
+               "latest-${DRONE_STAGE_OS}-${DRONE_STAGE_ARCH}",
                "${DRONE_COMMIT_SHA:0:8}"
             ],
             "username": {
@@ -198,6 +199,7 @@
             "repo": "kradalby/alertmanager-discord",
             "tags": [
                "latest",
+               "latest-${DRONE_STAGE_OS}-${DRONE_STAGE_ARCH}",
                "${DRONE_COMMIT_SHA:0:8}"
             ],
             "username": {
@@ -269,6 +271,7 @@
             ],
             "tags": [
                "latest",
+               "latest-${DRONE_STAGE_OS}-${DRONE_STAGE_ARCH}",
                "${DRONE_COMMIT_SHA:0:8}"
             ],
             "target": "kradalby/alertmanager-discord",
