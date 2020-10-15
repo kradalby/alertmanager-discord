@@ -272,6 +272,7 @@
                "${DRONE_COMMIT_SHA:0:8}"
             ],
             "target": "kradalby/alertmanager-discord",
+            "template": "kradalby/alertmanager-discord:latest-OS-ARCH",
             "username": {
                "from_secret": "docker_username"
             }
