@@ -21,7 +21,7 @@
             "npm install prettier",
             "npx prettier --check \"**/*.{ts,js,md,yaml,yml,sass,css,scss}\""
          ],
-         "image": "node:lts",
+         "image": "node:lts-buster",
          "name": "Prettier lint",
          "pull": "always"
       },
@@ -141,7 +141,7 @@
             "npm install prettier",
             "npx prettier --check \"**/*.{ts,js,md,yaml,yml,sass,css,scss}\""
          ],
-         "image": "node:lts",
+         "image": "node:lts-buster",
          "name": "Prettier lint",
          "pull": "always"
       },
@@ -164,7 +164,7 @@
       },
       {
          "environment": {
-            "DOCKER_BUILDKIT": 0
+            "DOCKER_BUILDKIT": 1
          },
          "image": "plugins/docker",
          "name": "Build container image",
@@ -187,7 +187,7 @@
       },
       {
          "environment": {
-            "DOCKER_BUILDKIT": 0
+            "DOCKER_BUILDKIT": 1
          },
          "image": "plugins/docker",
          "name": "Publish image kradalby/alertmanager-discord",
@@ -254,6 +254,10 @@
    "name": "Docker manifests",
    "node_selector": {
       "drone": true
+   },
+   "platform": {
+      "arch": "amd64",
+      "os": "linux"
    },
    "steps": [
       {
