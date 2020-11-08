@@ -10,3 +10,4 @@ linters:
     - gomnd
     - godox
     - funlen
+    - exhaustivestruct
