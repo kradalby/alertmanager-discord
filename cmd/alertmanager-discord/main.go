@@ -18,22 +18,6 @@ import (
 )
 
 const alertTemplateStr string = `
-{{- define "__alert_silence_link" -}}
-    {{ .ExternalURL }}/#/silences/new?filter=%7B
-    {{- range .Alert.Labels.SortedPairs -}}
-        {{- if ne .Name "alertname" -}}
-            {{- .Name }}%3D"{{- .Value -}}"%2C%20
-        {{- end -}}
-    {{- end -}}
-    alertname%3D"{{ .Alert.Labels.alertname }}"%7D
-{{- end -}}
-
-{{- define "__alertmanager_link" -}}
-  {{- $name := .ExternalURL | trimPrefix "https://" -}}
-  {{- $name = $name | trimPrefix "https://" -}}
-  [{{ $name }}]({{ .ExternalURL }})
-{{- end -}}
-
 {{- define "__alert_severity_prefix" -}}
     {{ if ne .Alert.Status "firing" -}}
     :green_heart:
@@ -58,15 +42,6 @@ const alertTemplateStr string = `
     {{- end }}
 {{- end -}}
 
-{{- define "__alert_runbook_link" -}}
-  {{- if .Alert.Annotations.runbook -}}
-	[Runbook]({{- .Alert.Annotations.runbook -}})
-  {{- else if .Alert.Annotations.runbook_url -}}
-	[Runbook]({{- .Alert.Annotations.runbook_url -}})
-  {{- else -}}
-	No runbook annotation found
-  {{- end -}}
-{{- end -}}
 
 {{- define "__alert_description" -}}
   {{- if .Alert.Annotations.description -}}
@@ -108,7 +83,6 @@ const alertTemplateStr string = `
   {{ end -}}
 {{- end -}}
 
---------------------------------
 
 {{- template "__alert_instance" . }}
 {{- template "__alert_job" . }}
@@ -120,10 +94,7 @@ const alertTemplateStr string = `
 **Severity:**
 {{ template "__alert_severity" . }}
 
-[Source]({{ .Alert.GeneratorURL }})
-{{ template "__alert_runbook_link" . }}
-[Silence]({{ template "__alert_silence_link" . }})
-Sent by: {{ template "__alertmanager_link" . }}
+
 `
 
 const (
@@ -235,7 +206,7 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 		}
 
 		field := DiscordEmbedField{
-			Name:  "Information",
+			Name:  "---------------------------------------------------------------------",
 			Value: tpl.String(),
 		}
 		fields = append(fields, field)
