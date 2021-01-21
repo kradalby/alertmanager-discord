@@ -3,7 +3,7 @@ WORKDIR /app
 ADD . .
 RUN CGO_ENABLED=0 GOOS=linux make build
 
-FROM alpine:3.11 as certs
+FROM alpine:3.13 as certs
 
 RUN apk --no-cache add ca-certificates && update-ca-certificates
 
