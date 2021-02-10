@@ -1,335 +1,141 @@
 ---
 {
-   "dns_config": {
-      "nameservers": [
-         "1.1.1.1",
-         "1.0.0.1"
-      ]
-   },
-   "kind": "pipeline",
-   "name": "amd64",
-   "node_selector": {
-      "drone": true
-   },
-   "platform": {
-      "arch": "amd64",
-      "os": "linux"
-   },
-   "steps": [
+  "dns_config": { "nameservers": ["1.1.1.1", "1.0.0.1"] },
+  "kind": "pipeline",
+  "name": "amd64",
+  "node_selector":
+    {
+      "drone": true,
+      "kubernetes.io/arch": "amd64",
+      "kubernetes.io/os": "linux",
+    },
+  "platform": { "arch": "amd64", "os": "linux" },
+  "steps":
+    [
       {
-         "commands": [
+        "commands":
+          [
             "npm install prettier",
-            "npx prettier --check \"**/*.{ts,js,md,yaml,yml,sass,css,scss}\""
-         ],
-         "image": "node:lts-buster",
-         "name": "Prettier lint",
-         "pull": "always"
+            'npx prettier --check "**/*.{ts,js,md,yaml,yml,sass,css,scss}"',
+          ],
+        "image": "node:lts-buster",
+        "name": "Prettier lint",
+        "pull": "always",
       },
       {
-         "commands": [
+        "commands":
+          [
             "curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin",
-            "golangci-lint run -v --timeout 10m"
-         ],
-         "image": "golang:1.15-buster",
-         "name": "Go lint",
-         "pull": "always"
+            "golangci-lint run -v --timeout 10m",
+          ],
+        "image": "golang:1.15-buster",
+        "name": "Go lint",
+        "pull": "always",
       },
       {
-         "commands": [
-            "go test ./..."
-         ],
-         "image": "golang:1.15-buster",
-         "name": "Go test",
-         "pull": "always"
+        "commands": ["go test ./..."],
+        "image": "golang:1.15-buster",
+        "name": "Go test",
+        "pull": "always",
       },
       {
-         "environment": {
-            "DOCKER_BUILDKIT": 1
-         },
-         "image": "plugins/docker",
-         "name": "Build container image",
-         "pull": "always",
-         "settings": {
-            "repo": "build-only"
-         },
-         "trigger": {
-            "event": [
-               "pull_request"
-            ]
-         },
-         "when": {
-            "branch": {
-               "exclude": [
-                  "master"
-               ]
-            }
-         }
+        "environment": { "DOCKER_BUILDKIT": 1 },
+        "image": "plugins/docker",
+        "name": "Build container image",
+        "pull": "always",
+        "settings": { "repo": "build-only" },
+        "trigger": { "event": ["pull_request"] },
+        "when": { "branch": { "exclude": ["master"] } },
       },
       {
-         "environment": {
-            "DOCKER_BUILDKIT": 1
-         },
-         "image": "plugins/docker",
-         "name": "Publish image kradalby/alertmanager-discord",
-         "pull": "always",
-         "settings": {
-            "password": {
-               "from_secret": "docker_password"
-            },
+        "environment": { "DOCKER_BUILDKIT": 1 },
+        "image": "plugins/docker",
+        "name": "Publish image kradalby/alertmanager-discord",
+        "pull": "always",
+        "settings":
+          {
+            "password": { "from_secret": "docker_password" },
             "repo": "kradalby/alertmanager-discord",
-            "tags": [
-               "latest",
-               "latest-${DRONE_STAGE_OS}-${DRONE_STAGE_ARCH}",
-               "${DRONE_COMMIT_SHA:0:8}"
-            ],
-            "username": {
-               "from_secret": "docker_username"
-            }
-         },
-         "when": {
-            "branch": [
-               "master"
-            ],
-            "event": [
-               "push"
-            ]
-         }
+            "tags":
+              [
+                "latest",
+                "latest-${DRONE_STAGE_OS}-${DRONE_STAGE_ARCH}",
+                "${DRONE_COMMIT_SHA:0:8}",
+              ],
+            "username": { "from_secret": "docker_username" },
+          },
+        "when": { "branch": ["master"], "event": ["push"] },
       },
       {
-         "image": "appleboy/drone-discord",
-         "name": "Notify Discord",
-         "pull": "always",
-         "settings": {
+        "image": "appleboy/drone-discord",
+        "name": "Notify Discord",
+        "pull": "always",
+        "settings":
+          {
             "message": "{{#success build.status}}\n✅  Build #{{build.number}} of `{{repo.name}}` succeeded.\n\n📝  Commit by {{commit.author}} on `{{commit.branch}}`:\n``` {{commit.message}} ```\n🌐  {{ build.link }}\n\n✅  duration: {{duration build.started build.finished}}\n✅  started: {{datetime build.started \"2006/01/02 15:04\" \"UTC\"}}\n✅  finished: {{datetime build.finished \"2006/01/02 15:04\" \"UTC\"}}\n\n{{else}}\n@everyone\n❌  Build #{{build.number}} of `{{repo.name}}` failed.\n\n📝  Commit by {{commit.author}} on `{{commit.branch}}`:\n``` {{commit.message}} ```\n🌐  {{ build.link }}\n\n✅  duration: {{duration build.started build.finished}}\n✅  started: {{datetime build.started \"2006/01/02 15:04\" \"UTC\"}}\n✅  finished: {{datetime build.finished \"2006/01/02 15:04\" \"UTC\"}}\n\n{{/success}}\n",
-            "webhook_id": {
-               "from_secret": "discord_webhook_id"
-            },
-            "webhook_token": {
-               "from_secret": "discord_webhook_token"
-            }
-         },
-         "when": {
-            "status": [
-               "success",
-               "failure"
-            ]
-         }
-      }
-   ],
-   "type": "kubernetes"
+            "webhook_id": { "from_secret": "discord_webhook_id" },
+            "webhook_token": { "from_secret": "discord_webhook_token" },
+          },
+        "when": { "status": ["success", "failure"] },
+      },
+    ],
+  "type": "kubernetes",
 }
 ---
 {
-   "dns_config": {
-      "nameservers": [
-         "1.1.1.1",
-         "1.0.0.1"
-      ]
-   },
-   "kind": "pipeline",
-   "name": "arm64",
-   "node_selector": {
-      "drone": true
-   },
-   "platform": {
-      "arch": "arm64",
-      "os": "linux"
-   },
-   "steps": [
+  "depends_on": ["amd64"],
+  "dns_config": { "nameservers": ["1.1.1.1", "1.0.0.1"] },
+  "kind": "pipeline",
+  "name": "Docker manifests",
+  "node_selector": { "drone": true },
+  "platform": { "arch": "amd64", "os": "linux" },
+  "steps":
+    [
       {
-         "commands": [
-            "npm install prettier",
-            "npx prettier --check \"**/*.{ts,js,md,yaml,yml,sass,css,scss}\""
-         ],
-         "image": "node:lts-buster",
-         "name": "Prettier lint",
-         "pull": "always"
-      },
-      {
-         "commands": [
-            "curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin",
-            "golangci-lint run -v --timeout 10m"
-         ],
-         "image": "golang:1.15-buster",
-         "name": "Go lint",
-         "pull": "always"
-      },
-      {
-         "commands": [
-            "go test ./..."
-         ],
-         "image": "golang:1.15-buster",
-         "name": "Go test",
-         "pull": "always"
-      },
-      {
-         "environment": {
-            "DOCKER_BUILDKIT": 1
-         },
-         "image": "plugins/docker",
-         "name": "Build container image",
-         "pull": "always",
-         "settings": {
-            "repo": "build-only"
-         },
-         "trigger": {
-            "event": [
-               "pull_request"
-            ]
-         },
-         "when": {
-            "branch": {
-               "exclude": [
-                  "master"
-               ]
-            }
-         }
-      },
-      {
-         "environment": {
-            "DOCKER_BUILDKIT": 1
-         },
-         "image": "plugins/docker",
-         "name": "Publish image kradalby/alertmanager-discord",
-         "pull": "always",
-         "settings": {
-            "password": {
-               "from_secret": "docker_password"
-            },
-            "repo": "kradalby/alertmanager-discord",
-            "tags": [
-               "latest",
-               "latest-${DRONE_STAGE_OS}-${DRONE_STAGE_ARCH}",
-               "${DRONE_COMMIT_SHA:0:8}"
-            ],
-            "username": {
-               "from_secret": "docker_username"
-            }
-         },
-         "when": {
-            "branch": [
-               "master"
-            ],
-            "event": [
-               "push"
-            ]
-         }
-      },
-      {
-         "image": "appleboy/drone-discord",
-         "name": "Notify Discord",
-         "pull": "always",
-         "settings": {
-            "message": "{{#success build.status}}\n✅  Build #{{build.number}} of `{{repo.name}}` succeeded.\n\n📝  Commit by {{commit.author}} on `{{commit.branch}}`:\n``` {{commit.message}} ```\n🌐  {{ build.link }}\n\n✅  duration: {{duration build.started build.finished}}\n✅  started: {{datetime build.started \"2006/01/02 15:04\" \"UTC\"}}\n✅  finished: {{datetime build.finished \"2006/01/02 15:04\" \"UTC\"}}\n\n{{else}}\n@everyone\n❌  Build #{{build.number}} of `{{repo.name}}` failed.\n\n📝  Commit by {{commit.author}} on `{{commit.branch}}`:\n``` {{commit.message}} ```\n🌐  {{ build.link }}\n\n✅  duration: {{duration build.started build.finished}}\n✅  started: {{datetime build.started \"2006/01/02 15:04\" \"UTC\"}}\n✅  finished: {{datetime build.finished \"2006/01/02 15:04\" \"UTC\"}}\n\n{{/success}}\n",
-            "webhook_id": {
-               "from_secret": "discord_webhook_id"
-            },
-            "webhook_token": {
-               "from_secret": "discord_webhook_token"
-            }
-         },
-         "when": {
-            "status": [
-               "success",
-               "failure"
-            ]
-         }
-      }
-   ],
-   "type": "kubernetes"
-}
----
-{
-   "depends_on": [
-      "amd64",
-      "arm64"
-   ],
-   "dns_config": {
-      "nameservers": [
-         "1.1.1.1",
-         "1.0.0.1"
-      ]
-   },
-   "kind": "pipeline",
-   "name": "Docker manifests",
-   "node_selector": {
-      "drone": true
-   },
-   "platform": {
-      "arch": "amd64",
-      "os": "linux"
-   },
-   "steps": [
-      {
-         "image": "plugins/manifest",
-         "name": "Publish manifests kradalby/alertmanager-discord",
-         "pull": "always",
-         "settings": {
+        "image": "plugins/manifest",
+        "name": "Publish manifests kradalby/alertmanager-discord",
+        "pull": "always",
+        "settings":
+          {
             "ignore_missing": true,
-            "password": {
-               "from_secret": "docker_password"
-            },
-            "platforms": [
-               "linux/amd64",
-               "linux/arm64"
-            ],
-            "tags": [
-               "latest",
-               "latest-${DRONE_STAGE_OS}-${DRONE_STAGE_ARCH}",
-               "${DRONE_COMMIT_SHA:0:8}"
-            ],
+            "password": { "from_secret": "docker_password" },
+            "platforms": ["linux/amd64"],
+            "tags":
+              [
+                "latest",
+                "latest-${DRONE_STAGE_OS}-${DRONE_STAGE_ARCH}",
+                "${DRONE_COMMIT_SHA:0:8}",
+              ],
             "target": "kradalby/alertmanager-discord",
             "template": "kradalby/alertmanager-discord:latest-OS-ARCH",
-            "username": {
-               "from_secret": "docker_username"
-            }
-         },
-         "when": {
-            "branch": [
-               "master"
-            ],
-            "event": [
-               "push"
-            ]
-         }
-      }
-   ],
-   "type": "kubernetes"
+            "username": { "from_secret": "docker_username" },
+          },
+        "when": { "branch": ["master"], "event": ["push"] },
+      },
+    ],
+  "type": "kubernetes",
 }
 ---
 {
-   "get": {
-      "name": "id",
-      "path": "discord-build"
-   },
-   "kind": "secret",
-   "name": "discord_webhook_id"
+  "get": { "name": "id", "path": "discord-build" },
+  "kind": "secret",
+  "name": "discord_webhook_id",
 }
 ---
 {
-   "get": {
-      "name": "token",
-      "path": "discord-build"
-   },
-   "kind": "secret",
-   "name": "discord_webhook_token"
+  "get": { "name": "token", "path": "discord-build" },
+  "kind": "secret",
+  "name": "discord_webhook_token",
 }
 ---
 {
-   "get": {
-      "name": "username",
-      "path": "docker"
-   },
-   "kind": "secret",
-   "name": "docker_username"
+  "get": { "name": "username", "path": "docker" },
+  "kind": "secret",
+  "name": "docker_username",
 }
 ---
 {
-   "get": {
-      "name": "password",
-      "path": "docker"
-   },
-   "kind": "secret",
-   "name": "docker_password"
+  "get": { "name": "password", "path": "docker" },
+  "kind": "secret",
+  "name": "docker_password",
 }
-...
