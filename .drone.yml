@@ -1,6 +1,5 @@
 ---
 {
-  "dns_config": { "nameservers": ["1.1.1.1", "1.0.0.1"] },
   "kind": "pipeline",
   "name": "amd64",
   "node_selector":
@@ -84,7 +83,6 @@
 ---
 {
   "depends_on": ["amd64"],
-  "dns_config": { "nameservers": ["1.1.1.1", "1.0.0.1"] },
   "kind": "pipeline",
   "name": "Docker manifests",
   "node_selector": { "drone": true },
