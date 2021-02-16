@@ -30,7 +30,7 @@ podTemplate(containers: [
                         $class: 'ChangelogToBranch',
                         options: [
                             compareRemote: 'origin',
-                            compareTarget: 'master'
+                            compareTarget: 'main'
                         ]
                     ]
                 ],
@@ -44,7 +44,7 @@ podTemplate(containers: [
         }
 
         // Build and push the image and notify via Discord only on PR merge to main.
-        if (env.BRANCH_NAME == 'master') {
+        if (env.BRANCH_NAME == 'main') {
             stage('Build Docker Image') {
                 container('docker') {
                     docker.withRegistry('https://107126629234.dkr.ecr.ap-southeast-1.amazonaws.com', 'ecr:ap-southeast-1:49feb1c9-1719-4520-aa17-67695b347b0e') {
