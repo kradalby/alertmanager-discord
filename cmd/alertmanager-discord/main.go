@@ -18,6 +18,10 @@ import (
 )
 
 const alertTemplateStr string = `
+{{- define "__alert_silence_link" -}}
+    {{ .ExternalURL }}/#/silences/new?filter=%7B
+
+const alertTemplateStr string = `
 {{- define "__alert_severity_prefix" -}}
     {{ if ne .Alert.Status "firing" -}}
     :green_heart:
