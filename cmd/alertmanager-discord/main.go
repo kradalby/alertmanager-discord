@@ -56,9 +56,24 @@ const alertTemplateStr string = `
 {{- end -}}
 
 {{- define "__alert_instance" -}}
-  {{- if .Alert.Labels.instance }}
-**Instance:**
-{{ .Alert.Labels.instance }}
+  {{- if .Alert.Labels.hpa }}
+	**Resources:**
+	{{ .Alert.Labels.hpa }}
+  {{- else if .Alert.Labels.job_name }}
+	**Resources:**
+	{{ .Alert.Labels.job_name }}
+  {{- else if .Alert.Labels.deployment }}
+	**Resources:**
+	{{ .Alert.Labels.deployment }}
+  {{- else if .Alert.Labels.pod }}
+	**Resources:**
+	{{ .Alert.Labels.pod }}
+  {{- else if .Alert.Labels.node }}
+	**Resources:**
+	{{ .Alert.Labels.node }}
+  {{- else if .Alert.Labels.instance }}
+	**Resources:**
+	{{ .Alert.Labels.instance }}
   {{ end -}}
 {{- end -}}
 
@@ -88,11 +103,14 @@ const alertTemplateStr string = `
 {{- template "__alert_job" . }}
 {{- template "__alert_site" . }}
 {{- template "__alert_namespace" . }}
+
 **Description:**
 {{ template "__alert_description" . }}
 
 **Severity:**
 {{ template "__alert_severity" . }}
+
+**Team Responsible:**
 
 
 `
