@@ -55,6 +55,16 @@ const alertTemplateStr string = `
   {{- end -}}
 {{- end -}}
 
+{{- define "__alert_runbook_link" -}}
+  {{- if .Alert.Annotations.runbook -}}
+	[Runbook]({{- .Alert.Annotations.runbook -}})
+  {{- else if .Alert.Annotations.runbook_url -}}
+	[Runbook]({{- .Alert.Annotations.runbook_url -}})
+  {{- else -}}
+	No runbook annotation found
+  {{- end -}}
+{{- end -}}
+
 {{- define "__alert_instance" -}}
   {{- if .Alert.Labels.hpa }}
 	**Resources:**
@@ -71,6 +81,9 @@ const alertTemplateStr string = `
   {{- else if .Alert.Labels.node }}
 	**Resources:**
 	{{ .Alert.Labels.node }}
+  {{- else if .Alert.Labels.cronjob }}
+	**Resources:**
+	{{ .Alert.Labels.cronjob }}
   {{- else if .Alert.Labels.instance }}
 	**Resources:**
 	{{ .Alert.Labels.instance }}
@@ -112,6 +125,9 @@ const alertTemplateStr string = `
 
 **Team Responsible:**
 
+[Source]({{ .Alert.GeneratorURL }})
+{{ template "__alert_runbook_link" . }}
+[Silence]({{ template "__alert_silence_link" . }})
 
 `
 
