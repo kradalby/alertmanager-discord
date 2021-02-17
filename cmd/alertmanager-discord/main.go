@@ -125,7 +125,6 @@ const alertTemplateStr string = `
 
 {{- template "__alert_instance" . }}
 
-{{- template "__alert_site" . }}
 **Description:**
 {{ template "__alert_description" . }}
 :link: {{ template "__alert_runbook_link" . }}
@@ -136,6 +135,7 @@ const alertTemplateStr string = `
 
 **Team Responsible:**
 :firefighter:
+
 `
 
 const (
