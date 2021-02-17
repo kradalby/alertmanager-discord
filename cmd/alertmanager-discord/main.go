@@ -136,10 +136,8 @@ const alertTemplateStr string = `
 
 **Team Responsible:**
 
-[Source]({{ .Alert.GeneratorURL }})
 {{ template "__alert_runbook_link" . }}
 [Silence]({{ template "__alert_silence_link" . }})
-
 `
 
 const (
