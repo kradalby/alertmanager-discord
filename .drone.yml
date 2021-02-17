@@ -42,7 +42,7 @@
         "image": "plugins/docker",
         "name": "Build container image",
         "pull": "always",
-        "settings": { "dry_run": true },
+        "settings": { "dry_run": true, "purge": true },
         "trigger": { "event": ["pull_request"] },
         "when": { "branch": { "exclude": ["master"] } },
       },
@@ -54,6 +54,7 @@
         "settings":
           {
             "password": { "from_secret": "docker_password" },
+            "purge": true,
             "repo": "kradalby/alertmanager-discord",
             "tags":
               [
