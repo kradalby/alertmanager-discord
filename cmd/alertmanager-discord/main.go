@@ -247,7 +247,7 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 		}
 
 		field := DiscordEmbedField{
-			Name:  "-------------------------------------------------------------",
+			Name:  "---------------------------------------------------------------------",
 			Value: tpl.String(),
 		}
 		fields = append(fields, field)
