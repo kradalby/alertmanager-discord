@@ -124,20 +124,18 @@ const alertTemplateStr string = `
 
 
 {{- template "__alert_instance" . }}
-{{- template "__alert_job" . }}
-{{- template "__alert_site" . }}
-{{- template "__alert_namespace" . }}
 
+{{- template "__alert_site" . }}
 **Description:**
 {{ template "__alert_description" . }}
+:link: {{ template "__alert_runbook_link" . }}
+:link: [Silence]({{ template "__alert_silence_link" . }})
 
 **Severity:**
 {{ template "__alert_severity" . }}
 
 **Team Responsible:**
-
-{{ template "__alert_runbook_link" . }}
-[Silence]({{ template "__alert_silence_link" . }})
+:firefighter:
 `
 
 const (
@@ -249,7 +247,7 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 		}
 
 		field := DiscordEmbedField{
-			Name:  "---------------------------------------------------------------------",
+			Name:  "-------------------------------------------------------------",
 			Value: tpl.String(),
 		}
 		fields = append(fields, field)
