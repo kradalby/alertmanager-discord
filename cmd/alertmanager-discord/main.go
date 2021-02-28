@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/Masterminds/sprig"
 	alertmanager "github.com/prometheus/alertmanager/template"
@@ -231,7 +233,7 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 		},
 		)
 		if err != nil {
-			log.Printf("error: failed to build message from template %s", err)
+			level.Error(logger).Log("msg", fmt.Sprintf("error: failed to build message from template %s", err))
 		}
 
 		field := DiscordEmbedField{
@@ -246,13 +248,19 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 	return embed
 }
 
+var logger log.Logger
+
 func main() {
+	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	logger = level.NewFilter(logger, level.AllowDebug())
+	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
+
 	webhookURL := os.Getenv("DISCORD_WEBHOOK")
 	whURL := flag.String("webhook.url", webhookURL, "")
 	flag.Parse()
 
 	if webhookURL == "" && *whURL == "" {
-		fmt.Fprintf(os.Stderr, "error: environment variable DISCORD_WEBHOOK not found\n")
+		level.Error(logger).Log("msg", "environment variable DISCORD_WEBHOOK not found")
 		os.Exit(1)
 	}
 
@@ -262,7 +270,7 @@ func main() {
 			Parse(alertTemplateStr),
 	)
 
-	fmt.Fprintf(os.Stdout, "info: Listening on 0.0.0.0:9094\n")
+	level.Info(logger).Log("msg", "Listening on 0.0.0.0:9094")
 
 	err := http.ListenAndServe(":9094", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, err := ioutil.ReadAll(r.Body)
@@ -273,8 +281,14 @@ func main() {
 		alertmanagerPayload := &alertmanager.Data{}
 		err = json.Unmarshal(b, &alertmanagerPayload)
 		if err != nil {
-			panic(err)
+			level.Error(logger).Log("msg", fmt.Sprintf("failed to unmarshal alert %s", err))
 		}
+
+		level.Info(logger).Log(
+			"msg", "received alert",
+			"source", alertmanagerPayload.ExternalURL,
+			"status", alertmanagerPayload.Status,
+		)
 
 		payload := DiscordWebhookPayload{
 			Embeds: []DiscordEmbed{},
@@ -296,13 +310,13 @@ func main() {
 
 		req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, *whURL, bytes.NewReader(data))
 		if err != nil {
-			log.Printf("error: failed to create request %s", err)
+			level.Error(logger).Log("msg", fmt.Sprintf("failed to create request %s", err))
 		}
 		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			log.Printf("error: failed to post message to discord %s", err)
+			level.Error(logger).Log("msg", fmt.Sprintf("failed to post message to discord %s", err))
 		}
 
 		defer resp.Body.Close()
