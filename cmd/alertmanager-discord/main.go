@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Masterminds/sprig"
 	"github.com/go-kit/kit/log"
@@ -173,6 +174,12 @@ type DiscordWebhookPayload struct {
 	AvatarURL string         `json:"avatar_url"`
 	Content   string         `json:"content,omitempty"`
 	Embeds    []DiscordEmbed `json:"embeds,omitempty"`
+}
+
+type DiscordRateLimitResponse struct {
+	Message    string  `json:"message"`
+	RetryAfter float64 `json:"retry_after"`
+	Global     bool    `json:"global"`
 }
 
 func getColour(alert *alertmanager.Alert) int {
@@ -396,8 +403,38 @@ func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed)
 			"status", resp.Status,
 			"status_code", resp.StatusCode,
 			"proto", resp.Proto,
-			"body", string(body),
+			"response_body", string(body),
+			"request_body", string(data),
 		)
+	}
+
+	if resp.StatusCode == 429 {
+		level.Info(logger).Log(
+			"traceID", span.SpanContext().TraceID,
+			"msg", "received 'too many requests', backing off and retrieing",
+			"status", resp.Status,
+			"status_code", resp.StatusCode,
+			"proto", resp.Proto,
+		)
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read Discord response %w", err)
+		}
+
+		ratelimitResponse := &DiscordRateLimitResponse{}
+
+		err = json.Unmarshal(body, &ratelimitResponse)
+		if err != nil {
+			level.Error(logger).Log("traceID", span.SpanContext().TraceID,
+				"msg", fmt.Sprintf("failed to unmarshal ratelimit response %s", err),
+			)
+		}
+
+		waitFor := ratelimitResponse.RetryAfter + 1
+		time.Sleep((time.Duration(waitFor) * time.Second))
+
+		return sendPayloadToDiscord(ctx, whURL, embed)
 	}
 
 	return nil
