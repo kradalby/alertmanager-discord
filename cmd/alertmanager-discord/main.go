@@ -304,11 +304,7 @@ func main() {
 	level.Info(logger).Log("msg", "Listening on 0.0.0.0:9094")
 
 	err := http.ListenAndServe(":9094", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		tracer := otel.Tracer("")
-		var span trace.Span
-		_, span = tracer.Start(ctx, "remoteRead")
-		defer span.End()
+		span := trace.SpanFromContext(r.Context())
 
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -336,53 +332,76 @@ func main() {
 			"alertname", getAlertname(alertmanagerPayload),
 		)
 
-		payload := DiscordWebhookPayload{
-			Embeds: []DiscordEmbed{},
+		for _, alert := range alertmanagerPayload.Alerts {
+			embed := newEmbed(alertTemplate, alertmanagerPayload, []alertmanager.Alert{alert})
+			sendPayloadToDiscord(r.Context(), *whURL, embed)
 		}
 
-		firing := alertmanagerPayload.Alerts.Firing()
-		if len(firing) != 0 {
-			embed := newEmbed(alertTemplate, alertmanagerPayload, firing)
-			payload.Embeds = append(payload.Embeds, embed)
-		}
-
-		resolved := alertmanagerPayload.Alerts.Resolved()
-		if len(resolved) != 0 {
-			embed := newEmbed(alertTemplate, alertmanagerPayload, resolved)
-			payload.Embeds = append(payload.Embeds, embed)
-		}
-
-		data, _ := json.Marshal(payload)
-
-		req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, *whURL, bytes.NewReader(data))
-		if err != nil {
-			level.Error(logger).Log(
-				"traceID", span.SpanContext().TraceID,
-				"msg", fmt.Sprintf("failed to create request %s", err),
-			)
-		}
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			level.Error(logger).Log(
-				"traceID", span.SpanContext().TraceID,
-				"msg", fmt.Sprintf("failed to post message to discord %s", err),
-			)
-		}
-
-		level.Info(logger).Log(
-			"traceID", span.SpanContext().TraceID,
-			"msg", "response received",
-			"status", resp.Status,
-			"status_code", resp.StatusCode,
-			"proto", resp.Proto,
-		)
-
-		defer resp.Body.Close()
-	}), "webhook"),
+	}), "alertmanagerReceiver"),
 	)
 	if err != nil {
 		panic(err)
 	}
+}
+
+func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed) error {
+	tracer := otel.Tracer("")
+	var span trace.Span
+	_, span = tracer.Start(ctx, "sendPayloadToDiscord")
+	defer span.End()
+
+	payload := DiscordWebhookPayload{
+		Embeds: []DiscordEmbed{embed},
+	}
+
+	data, _ := json.Marshal(payload)
+
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, whURL, bytes.NewReader(data))
+	if err != nil {
+		level.Error(logger).Log(
+			"traceID", span.SpanContext().TraceID,
+			"msg", fmt.Sprintf("failed to create request %s", err),
+		)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		level.Error(logger).Log(
+			"traceID", span.SpanContext().TraceID,
+			"msg", fmt.Sprintf("failed to post message to discord %s", err),
+		)
+		return err
+	}
+	defer resp.Body.Close()
+
+	level.Info(logger).Log(
+		"traceID", span.SpanContext().TraceID,
+		"msg", "response received",
+		"status", resp.Status,
+		"status_code", resp.StatusCode,
+		"proto", resp.Proto,
+	)
+
+	if resp.StatusCode == 400 {
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			level.Error(logger).Log(
+				"traceID", span.SpanContext().TraceID,
+				"msg", fmt.Sprintf("failed to read Discord response %s", err),
+			)
+			return err
+		}
+
+		level.Error(logger).Log(
+			"traceID", span.SpanContext().TraceID,
+			"msg", "Bad body",
+			"status", resp.Status,
+			"status_code", resp.StatusCode,
+			"proto", resp.Proto,
+			"body", string(body),
+		)
+	}
+	return nil
 }
