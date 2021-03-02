@@ -11,12 +11,18 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/Masterminds/sprig"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
-	"github.com/Masterminds/sprig"
 	alertmanager "github.com/prometheus/alertmanager/template"
 	promModel "github.com/prometheus/common/model"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	jaegerPropagator "go.opentelemetry.io/contrib/propagators/jaeger"
+	jaegerExporter "go.opentelemetry.io/otel/exporters/trace/jaeger"
 )
 
 const alertTemplateStr string = `
@@ -250,10 +256,35 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 
 var logger log.Logger
 
+func initTracer(logger log.Logger) func() {
+	flush, err := jaegerExporter.InstallNewPipeline(
+		jaegerExporter.WithCollectorEndpoint(""),
+		jaegerExporter.WithProcess(jaegerExporter.Process{
+			ServiceName: "thanos-remote-read",
+		}),
+		jaegerExporter.WithDisabled(true),
+		jaegerExporter.WithDisabledFromEnv(),
+	)
+	if err != nil {
+		level.Error(logger).Log("err", err)
+		os.Exit(1)
+	}
+
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+		jaegerPropagator.Jaeger{},
+	))
+
+	return flush
+}
+
 func main() {
 	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	logger = level.NewFilter(logger, level.AllowDebug())
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
+
+	_ = initTracer(logger)
 
 	webhookURL := os.Getenv("DISCORD_WEBHOOK")
 	whURL := flag.String("webhook.url", webhookURL, "")
@@ -272,22 +303,37 @@ func main() {
 
 	level.Info(logger).Log("msg", "Listening on 0.0.0.0:9094")
 
-	err := http.ListenAndServe(":9094", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	err := http.ListenAndServe(":9094", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		tracer := otel.Tracer("")
+		var span trace.Span
+		_, span = tracer.Start(ctx, "remoteRead")
+		defer span.End()
+
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			panic(err)
+			level.Error(logger).Log(
+				"traceID", span.SpanContext().TraceID,
+				"msg", fmt.Sprintf("failed to read Alertmanager request %s", err),
+			)
 		}
 
 		alertmanagerPayload := &alertmanager.Data{}
 		err = json.Unmarshal(b, &alertmanagerPayload)
 		if err != nil {
-			level.Error(logger).Log("msg", fmt.Sprintf("failed to unmarshal alert %s", err))
+			level.Error(logger).Log("traceID", span.SpanContext().TraceID,
+				"msg", fmt.Sprintf("failed to unmarshal alert %s", err),
+			)
 		}
 
 		level.Info(logger).Log(
+			"traceID", span.SpanContext().TraceID,
 			"msg", "received alert",
 			"source", alertmanagerPayload.ExternalURL,
+			"receiver", alertmanagerPayload.Receiver,
 			"status", alertmanagerPayload.Status,
+			"proto", r.Proto,
+			"alertname", getAlertname(alertmanagerPayload),
 		)
 
 		payload := DiscordWebhookPayload{
@@ -310,17 +356,31 @@ func main() {
 
 		req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, *whURL, bytes.NewReader(data))
 		if err != nil {
-			level.Error(logger).Log("msg", fmt.Sprintf("failed to create request %s", err))
+			level.Error(logger).Log(
+				"traceID", span.SpanContext().TraceID,
+				"msg", fmt.Sprintf("failed to create request %s", err),
+			)
 		}
 		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			level.Error(logger).Log("msg", fmt.Sprintf("failed to post message to discord %s", err))
+			level.Error(logger).Log(
+				"traceID", span.SpanContext().TraceID,
+				"msg", fmt.Sprintf("failed to post message to discord %s", err),
+			)
 		}
 
+		level.Info(logger).Log(
+			"traceID", span.SpanContext().TraceID,
+			"msg", "response received",
+			"status", resp.Status,
+			"status_code", resp.StatusCode,
+			"proto", resp.Proto,
+		)
+
 		defer resp.Body.Close()
-	}),
+	}), "webhook"),
 	)
 	if err != nil {
 		panic(err)
