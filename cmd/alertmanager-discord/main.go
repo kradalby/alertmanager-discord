@@ -77,6 +77,16 @@ const alertTemplateStr string = `
   {{- end -}}
 {{- end -}}
 
+{{- define "__alert_summary" -}}
+  {{- if .Alert.Annotations.summary -}}
+	{{ .Alert.Annotations.summary }}
+  {{- else if .Alert.Annotations.message -}}
+	{{ .Alert.Annotations.message }}
+  {{- else -}}
+	No summary found
+  {{- end -}}
+{{- end -}}
+
 {{- define "__alert_description" -}}
   {{- if .Alert.Annotations.description -}}
 	{{ .Alert.Annotations.description }}
@@ -123,6 +133,8 @@ const alertTemplateStr string = `
 {{- template "__alert_job" . }}
 {{- template "__alert_site" . }}
 {{- template "__alert_namespace" . }}
+**Summary:**
+{{ template "__alert_summary" . }}
 **Description:**
 {{ template "__alert_description" . }}
 
