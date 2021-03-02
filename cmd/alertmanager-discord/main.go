@@ -260,7 +260,7 @@ func initTracer(logger log.Logger) func() {
 	flush, err := jaegerExporter.InstallNewPipeline(
 		jaegerExporter.WithCollectorEndpoint(""),
 		jaegerExporter.WithProcess(jaegerExporter.Process{
-			ServiceName: "thanos-remote-read",
+			ServiceName: "alertmanager-discord",
 		}),
 		jaegerExporter.WithDisabled(true),
 		jaegerExporter.WithDisabledFromEnv(),
