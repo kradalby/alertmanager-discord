@@ -417,6 +417,7 @@ func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed)
 		"status", resp.Status,
 		"status_code", resp.StatusCode,
 		"proto", resp.Proto,
+		"alertname", payload.Embeds[0].Title,
 	)
 
 	if resp.StatusCode == 400 {
@@ -433,6 +434,7 @@ func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed)
 			"proto", resp.Proto,
 			"response_body", string(body),
 			"request_body", string(data),
+			"alertname", payload.Embeds[0].Title,
 		)
 	}
 
@@ -443,6 +445,7 @@ func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed)
 			"status", resp.Status,
 			"status_code", resp.StatusCode,
 			"proto", resp.Proto,
+			"alertname", payload.Embeds[0].Title,
 		)
 
 		body, err := ioutil.ReadAll(resp.Body)
