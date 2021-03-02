@@ -216,7 +216,7 @@ func getStatusEmoji(alert *alertmanager.Alert) string {
 	}
 }
 
-func getAlertname(a *alertmanager.Data) string {
+func getAlertnameFromPayload(a *alertmanager.Data) string {
 	if name, ok := a.CommonLabels["alertname"]; ok {
 		return name
 	} else if name, ok := a.GroupLabels["alertname"]; ok {
@@ -232,13 +232,23 @@ func getAlertname(a *alertmanager.Data) string {
 	return "no alertname found"
 }
 
+func getAlertname(alerts []alertmanager.Alert, payload *alertmanager.Data) string {
+	for _, alert := range alerts {
+		if name, ok := alert.Labels["alertname"]; ok {
+			return name
+		}
+	}
+
+	return getAlertnameFromPayload(payload)
+}
+
 func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertmanager.Alert) DiscordEmbed {
 	embed := DiscordEmbed{
 		Title: fmt.Sprintf(
 			"%s  [%d]  %s",
 			getStatusEmoji(&alerts[0]),
 			len(alerts),
-			getAlertname(data),
+			getAlertname(alerts, data),
 		),
 		URL:   data.ExternalURL,
 		Color: getColour(&alerts[0]),
@@ -354,7 +364,7 @@ func main() {
 			"receiver", alertmanagerPayload.Receiver,
 			"status", alertmanagerPayload.Status,
 			"proto", r.Proto,
-			"alertname", getAlertname(alertmanagerPayload),
+			"alertname", getAlertnameFromPayload(alertmanagerPayload),
 		)
 
 		for _, alert := range alertmanagerPayload.Alerts {
