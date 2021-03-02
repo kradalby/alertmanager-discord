@@ -334,9 +334,14 @@ func main() {
 
 		for _, alert := range alertmanagerPayload.Alerts {
 			embed := newEmbed(alertTemplate, alertmanagerPayload, []alertmanager.Alert{alert})
-			sendPayloadToDiscord(r.Context(), *whURL, embed)
+			err = sendPayloadToDiscord(r.Context(), *whURL, embed)
+			if err != nil {
+				level.Error(logger).Log(
+					"traceID", span.SpanContext().TraceID,
+					"msg", fmt.Sprintf("failed to send request: %s", err),
+				)
+			}
 		}
-
 	}), "alertmanagerReceiver"),
 	)
 	if err != nil {
@@ -346,8 +351,10 @@ func main() {
 
 func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed) error {
 	tracer := otel.Tracer("")
+
 	var span trace.Span
 	_, span = tracer.Start(ctx, "sendPayloadToDiscord")
+
 	defer span.End()
 
 	payload := DiscordWebhookPayload{
@@ -358,21 +365,14 @@ func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed)
 
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, whURL, bytes.NewReader(data))
 	if err != nil {
-		level.Error(logger).Log(
-			"traceID", span.SpanContext().TraceID,
-			"msg", fmt.Sprintf("failed to create request %s", err),
-		)
-		return err
+		return fmt.Errorf("failed to create request %w", err)
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		level.Error(logger).Log(
-			"traceID", span.SpanContext().TraceID,
-			"msg", fmt.Sprintf("failed to post message to discord %s", err),
-		)
-		return err
+		return fmt.Errorf("failed to post message to discord %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -387,11 +387,7 @@ func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed)
 	if resp.StatusCode == 400 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			level.Error(logger).Log(
-				"traceID", span.SpanContext().TraceID,
-				"msg", fmt.Sprintf("failed to read Discord response %s", err),
-			)
-			return err
+			return fmt.Errorf("failed to read Discord response %w", err)
 		}
 
 		level.Error(logger).Log(
@@ -403,5 +399,6 @@ func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed)
 			"body", string(body),
 		)
 	}
+
 	return nil
 }
