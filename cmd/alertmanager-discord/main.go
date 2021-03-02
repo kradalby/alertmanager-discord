@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -151,6 +152,8 @@ const (
 	colorRed   = 14177041
 	colorGreen = 3394560
 )
+
+var errFailedAfter5Retries = errors.New("failed to send alert after 5 retries")
 
 type DiscordEmbed struct {
 	Author struct {
@@ -385,6 +388,10 @@ func main() {
 }
 
 func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed) error {
+	return sendPayloadToDiscordWithRetry(ctx, whURL, embed, 5)
+}
+
+func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed DiscordEmbed, retries int) error {
 	tracer := otel.Tracer("")
 
 	var span trace.Span
@@ -465,7 +472,11 @@ func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed)
 		waitFor := ratelimitResponse.RetryAfter + 1
 		time.Sleep((time.Duration(waitFor) * time.Second))
 
-		return sendPayloadToDiscord(ctx, whURL, embed)
+		if retries > 0 {
+			return sendPayloadToDiscordWithRetry(ctx, whURL, embed, retries-1)
+		}
+
+		return errFailedAfter5Retries
 	}
 
 	return nil
