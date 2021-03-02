@@ -211,6 +211,12 @@ func getAlertname(a *alertmanager.Data) string {
 		return name
 	}
 
+	for _, alert := range a.Alerts {
+		if name, ok := alert.Labels["alertname"]; ok {
+			return name
+		}
+	}
+
 	return "no alertname found"
 }
 
