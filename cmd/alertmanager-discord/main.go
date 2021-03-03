@@ -7,10 +7,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"text/template"
 	"time"
 
 	"github.com/Masterminds/sprig"
@@ -21,11 +21,37 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	alertmanager "github.com/prometheus/alertmanager/template"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	promModel "github.com/prometheus/common/model"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	jaegerPropagator "go.opentelemetry.io/contrib/propagators/jaeger"
 	jaegerExporter "go.opentelemetry.io/otel/exporters/trace/jaeger"
 )
+
+var (
+	httpRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "http",
+			Name:      "requests_total",
+		},
+		[]string{"code", "method", "handler"})
+)
+var logger log.Logger
+var alertTemplate *template.Template
+var whURL string
+
+func init() {
+	prometheus.MustRegister(httpRequests)
+
+	alertTemplate = template.Must(
+		template.New("alertTemplate").
+			Funcs(sprig.TxtFuncMap()).
+			Parse(alertTemplateStr),
+	)
+}
+
+var errFailedAfter5Retries = errors.New("failed to send alert after 5 retries")
 
 const alertTemplateStr string = `
 {{- define "__alert_silence_link" -}}
@@ -152,8 +178,6 @@ const (
 	colorRed   = 14177041
 	colorGreen = 3394560
 )
-
-var errFailedAfter5Retries = errors.New("failed to send alert after 5 retries")
 
 type DiscordEmbed struct {
 	Author struct {
@@ -292,8 +316,6 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 	return embed
 }
 
-var logger log.Logger
-
 func initTracer(logger log.Logger) func() {
 	flush, err := jaegerExporter.InstallNewPipeline(
 		jaegerExporter.WithCollectorEndpoint(""),
@@ -325,65 +347,72 @@ func main() {
 	_ = initTracer(logger)
 
 	webhookURL := os.Getenv("DISCORD_WEBHOOK")
-	whURL := flag.String("webhook.url", webhookURL, "")
+	whURL = *flag.String("webhook.url", webhookURL, "")
 	flag.Parse()
 
-	if webhookURL == "" && *whURL == "" {
+	if webhookURL == "" && whURL == "" {
 		level.Error(logger).Log("msg", "environment variable DISCORD_WEBHOOK not found")
 		os.Exit(1)
 	}
 
-	alertTemplate := template.Must(
-		template.New("alertTemplate").
-			Funcs(sprig.FuncMap()).
-			Parse(alertTemplateStr),
-	)
-
 	level.Info(logger).Log("msg", "Listening on 0.0.0.0:9094")
 
-	err := http.ListenAndServe(":9094", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		span := trace.SpanFromContext(r.Context())
+	handler := func(path, name string, f http.HandlerFunc) {
+		http.HandleFunc(path, promhttp.InstrumentHandlerCounter(
+			httpRequests.MustCurryWith(prometheus.Labels{"handler": name}),
+			otelhttp.NewHandler(f, name),
+		))
+	}
 
-		b, err := ioutil.ReadAll(r.Body)
+	handler("/", "root", root)
+	handler("/-/healthy", "health", ok)
+	handler("/webhook", "alertmanagerWebhook", alertmanagerHandler)
+	http.Handle("/metrics", promhttp.Handler())
+
+	err := http.ListenAndServe(":9094", nil)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
+	span := trace.SpanFromContext(r.Context())
+
+	b, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		level.Error(logger).Log(
+			"traceID", span.SpanContext().TraceID,
+			"msg", fmt.Sprintf("failed to read Alertmanager request %s", err),
+		)
+	}
+
+	alertmanagerPayload := &alertmanager.Data{}
+	err = json.Unmarshal(b, &alertmanagerPayload)
+	if err != nil {
+		level.Error(logger).Log("traceID", span.SpanContext().TraceID,
+			"msg", fmt.Sprintf("failed to unmarshal alert %s", err),
+		)
+	}
+
+	level.Info(logger).Log(
+		"traceID", span.SpanContext().TraceID,
+		"msg", "received alert",
+		"source", alertmanagerPayload.ExternalURL,
+		"receiver", alertmanagerPayload.Receiver,
+		"status", alertmanagerPayload.Status,
+		"proto", r.Proto,
+		"alertname", getAlertnameFromPayload(alertmanagerPayload),
+	)
+
+	for _, alert := range alertmanagerPayload.Alerts {
+		embed := newEmbed(alertTemplate, alertmanagerPayload, []alertmanager.Alert{alert})
+		err = sendPayloadToDiscord(r.Context(), whURL, embed)
 		if err != nil {
 			level.Error(logger).Log(
 				"traceID", span.SpanContext().TraceID,
-				"msg", fmt.Sprintf("failed to read Alertmanager request %s", err),
+				"msg", fmt.Sprintf("failed to send request: %s", err),
 			)
 		}
-
-		alertmanagerPayload := &alertmanager.Data{}
-		err = json.Unmarshal(b, &alertmanagerPayload)
-		if err != nil {
-			level.Error(logger).Log("traceID", span.SpanContext().TraceID,
-				"msg", fmt.Sprintf("failed to unmarshal alert %s", err),
-			)
-		}
-
-		level.Info(logger).Log(
-			"traceID", span.SpanContext().TraceID,
-			"msg", "received alert",
-			"source", alertmanagerPayload.ExternalURL,
-			"receiver", alertmanagerPayload.Receiver,
-			"status", alertmanagerPayload.Status,
-			"proto", r.Proto,
-			"alertname", getAlertnameFromPayload(alertmanagerPayload),
-		)
-
-		for _, alert := range alertmanagerPayload.Alerts {
-			embed := newEmbed(alertTemplate, alertmanagerPayload, []alertmanager.Alert{alert})
-			err = sendPayloadToDiscord(r.Context(), *whURL, embed)
-			if err != nil {
-				level.Error(logger).Log(
-					"traceID", span.SpanContext().TraceID,
-					"msg", fmt.Sprintf("failed to send request: %s", err),
-				)
-			}
-		}
-	}), "alertmanagerReceiver"),
-	)
-	if err != nil {
-		panic(err)
 	}
 }
 
@@ -480,4 +509,29 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed Disc
 	}
 
 	return nil
+}
+
+func ok(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	span := trace.SpanFromContext(ctx)
+	defer span.End()
+	w.Write([]byte("ok"))
+}
+
+func root(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	span := trace.SpanFromContext(ctx)
+	defer span.End()
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-type", "text/html")
+	w.Write([]byte(`
+	<p>Alertmanager to Discord</p>
+	<ul>
+	  <li><a href="/-/healthy">/-/healthy</a>
+	  <li><a href="/metrics">/metrics</a>
+	  <li>/webhook (point Alertmanager here)
+	</ul>`))
 }
