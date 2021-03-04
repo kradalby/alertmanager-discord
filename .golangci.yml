@@ -16,3 +16,4 @@ linters:
     - funlen
     - exhaustivestruct
     - gochecknoglobals
+    - gochecknoinits
