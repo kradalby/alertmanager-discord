@@ -407,11 +407,12 @@ func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
 	for _, alert := range alertmanagerPayload.Alerts {
 		embed := newEmbed(alertTemplate, alertmanagerPayload, []alertmanager.Alert{alert})
 
-		err = sendPayloadToDiscord(r.Context(), webhookURL, embed)
+		status, err := sendPayloadToDiscord(r.Context(), webhookURL, embed)
 		if err != nil {
 			level.Error(logger).Log(
 				"traceID", span.SpanContext().TraceID,
 				"webhookURL", webhookURL,
+				"discord_status", status,
 				"msg", fmt.Sprintf("failed to send request: %s", err),
 			)
 			span.RecordError(err)
@@ -419,11 +420,15 @@ func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func sendPayloadToDiscord(ctx context.Context, webhookURL string, embed DiscordEmbed) error {
+func sendPayloadToDiscord(ctx context.Context, webhookURL string, embed DiscordEmbed) (int, error) {
 	return sendPayloadToDiscordWithRetry(ctx, webhookURL, embed, 5)
 }
 
-func sendPayloadToDiscordWithRetry(ctx context.Context, webhookURL string, embed DiscordEmbed, retries int) error {
+func sendPayloadToDiscordWithRetry(
+	ctx context.Context,
+	webhookURL string,
+	embed DiscordEmbed,
+	retries int) (int, error) {
 	tracer := otel.Tracer("")
 
 	var span trace.Span
@@ -441,7 +446,7 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, webhookURL string, embed
 	if err != nil {
 		span.RecordError(err)
 
-		return fmt.Errorf("failed to create request %w", err)
+		return 500, fmt.Errorf("failed to create request %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -450,7 +455,7 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, webhookURL string, embed
 	if err != nil {
 		span.RecordError(err)
 
-		return fmt.Errorf("failed to post message to discord %w", err)
+		return 500, fmt.Errorf("failed to post message to discord %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -468,7 +473,7 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, webhookURL string, embed
 		if err != nil {
 			span.RecordError(err)
 
-			return fmt.Errorf("failed to read Discord response %w", err)
+			return 400, fmt.Errorf("failed to read Discord response %w", err)
 		}
 
 		level.Error(logger).Log(
@@ -481,23 +486,16 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, webhookURL string, embed
 			"request_body", string(data),
 			"alertname", payload.Embeds[0].Title,
 		)
+
+		return 400, fmt.Errorf("failed to send Discord response %w", err)
 	}
 
 	if resp.StatusCode == 429 {
-		level.Info(logger).Log(
-			"traceID", span.SpanContext().TraceID,
-			"msg", "received 'too many requests', backing off and retrieing",
-			"status", resp.Status,
-			"status_code", resp.StatusCode,
-			"proto", resp.Proto,
-			"alertname", payload.Embeds[0].Title,
-		)
-
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			span.RecordError(err)
 
-			return fmt.Errorf("failed to read Discord response %w", err)
+			return 429, fmt.Errorf("failed to read Discord response %w", err)
 		}
 
 		ratelimitResponse := &DiscordRateLimitResponse{}
@@ -511,16 +509,27 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, webhookURL string, embed
 		}
 
 		waitFor := ratelimitResponse.RetryAfter + 1
+
+		level.Info(logger).Log(
+			"traceID", span.SpanContext().TraceID,
+			"msg", "received 'too many requests', backing off and retrieing",
+			"status", resp.Status,
+			"status_code", resp.StatusCode,
+			"retry", fmt.Sprintf("%fs", waitFor),
+			"proto", resp.Proto,
+			"alertname", payload.Embeds[0].Title,
+		)
+
 		time.Sleep((time.Duration(waitFor) * time.Second))
 
 		if retries > 0 {
 			return sendPayloadToDiscordWithRetry(ctx, webhookURL, embed, retries-1)
 		}
 
-		return errFailedAfter5Retries
+		return 429, errFailedAfter5Retries
 	}
 
-	return nil
+	return 200, nil
 }
 
 func ok(w http.ResponseWriter, r *http.Request) {
