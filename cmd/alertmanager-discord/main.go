@@ -35,11 +35,12 @@ var (
 			Namespace: "http",
 			Name:      "requests_total",
 		},
-		[]string{"code", "method", "handler"})
+		[]string{"code", "method", "handler"},
+	)
+	logger        log.Logger
+	alertTemplate *template.Template
+	webhookURL    string
 )
-var logger log.Logger
-var alertTemplate *template.Template
-var whURL string
 
 func init() {
 	prometheus.MustRegister(httpRequests)
@@ -346,11 +347,13 @@ func main() {
 
 	_ = initTracer(logger)
 
-	webhookURL := os.Getenv("DISCORD_WEBHOOK")
-	whURL = *flag.String("webhook.url", webhookURL, "")
+	webhookEnv := os.Getenv("DISCORD_WEBHOOK")
+	webhookFlag := flag.String("webhook.url", webhookEnv, "")
+	webhookURL := *webhookFlag
+
 	flag.Parse()
 
-	if webhookURL == "" && whURL == "" {
+	if webhookEnv == "" && webhookURL == "" {
 		level.Error(logger).Log("msg", "environment variable DISCORD_WEBHOOK not found")
 		os.Exit(1)
 	}
@@ -384,14 +387,17 @@ func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
 			"traceID", span.SpanContext().TraceID,
 			"msg", fmt.Sprintf("failed to read Alertmanager request %s", err),
 		)
+		span.RecordError(err)
 	}
 
 	alertmanagerPayload := &alertmanager.Data{}
+
 	err = json.Unmarshal(b, &alertmanagerPayload)
 	if err != nil {
 		level.Error(logger).Log("traceID", span.SpanContext().TraceID,
 			"msg", fmt.Sprintf("failed to unmarshal alert %s", err),
 		)
+		span.RecordError(err)
 	}
 
 	level.Info(logger).Log(
@@ -406,12 +412,14 @@ func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
 
 	for _, alert := range alertmanagerPayload.Alerts {
 		embed := newEmbed(alertTemplate, alertmanagerPayload, []alertmanager.Alert{alert})
-		err = sendPayloadToDiscord(r.Context(), whURL, embed)
+
+		err = sendPayloadToDiscord(r.Context(), webhookURL, embed)
 		if err != nil {
 			level.Error(logger).Log(
 				"traceID", span.SpanContext().TraceID,
 				"msg", fmt.Sprintf("failed to send request: %s", err),
 			)
+			span.RecordError(err)
 		}
 	}
 }
@@ -436,6 +444,8 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed Disc
 
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, whURL, bytes.NewReader(data))
 	if err != nil {
+		span.RecordError(err)
+
 		return fmt.Errorf("failed to create request %w", err)
 	}
 
@@ -443,6 +453,8 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed Disc
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		span.RecordError(err)
+
 		return fmt.Errorf("failed to post message to discord %w", err)
 	}
 	defer resp.Body.Close()
@@ -459,6 +471,8 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed Disc
 	if resp.StatusCode == 400 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
+			span.RecordError(err)
+
 			return fmt.Errorf("failed to read Discord response %w", err)
 		}
 
@@ -486,6 +500,8 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed Disc
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
+			span.RecordError(err)
+
 			return fmt.Errorf("failed to read Discord response %w", err)
 		}
 
@@ -496,6 +512,7 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed Disc
 			level.Error(logger).Log("traceID", span.SpanContext().TraceID,
 				"msg", fmt.Sprintf("failed to unmarshal ratelimit response %s", err),
 			)
+			span.RecordError(err)
 		}
 
 		waitFor := ratelimitResponse.RetryAfter + 1
@@ -513,25 +530,37 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed Disc
 
 func ok(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
 	span := trace.SpanFromContext(ctx)
 	defer span.End()
-	w.Write([]byte("ok"))
+
+	if _, err := w.Write([]byte("ok")); err != nil {
+		span.RecordError(err)
+	}
 }
 
 func root(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
 	span := trace.SpanFromContext(ctx)
 	defer span.End()
+
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
+
 		return
 	}
+
 	w.Header().Set("Content-type", "text/html")
-	w.Write([]byte(`
+
+	_, err := w.Write([]byte(`
 	<p>Alertmanager to Discord</p>
 	<ul>
 	  <li><a href="/-/healthy">/-/healthy</a>
 	  <li><a href="/metrics">/metrics</a>
 	  <li>/webhook (point Alertmanager here)
 	</ul>`))
+	if err != nil {
+		span.RecordError(err)
+	}
 }
