@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -39,7 +38,6 @@ var (
 	)
 	logger        log.Logger
 	alertTemplate *template.Template
-	webhookURL    string
 )
 
 func init() {
@@ -348,12 +346,7 @@ func main() {
 	_ = initTracer(logger)
 
 	webhookEnv := os.Getenv("DISCORD_WEBHOOK")
-	webhookFlag := flag.String("webhook.url", webhookEnv, "")
-	webhookURL := *webhookFlag
-
-	flag.Parse()
-
-	if webhookEnv == "" && webhookURL == "" {
+	if webhookEnv == "" {
 		level.Error(logger).Log("msg", "environment variable DISCORD_WEBHOOK not found")
 		os.Exit(1)
 	}
@@ -379,6 +372,7 @@ func main() {
 }
 
 func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
+	webhookURL := os.Getenv("DISCORD_WEBHOOK")
 	span := trace.SpanFromContext(r.Context())
 
 	b, err := ioutil.ReadAll(r.Body)
@@ -417,6 +411,7 @@ func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			level.Error(logger).Log(
 				"traceID", span.SpanContext().TraceID,
+				"webhookURL", webhookURL,
 				"msg", fmt.Sprintf("failed to send request: %s", err),
 			)
 			span.RecordError(err)
@@ -424,11 +419,11 @@ func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func sendPayloadToDiscord(ctx context.Context, whURL string, embed DiscordEmbed) error {
-	return sendPayloadToDiscordWithRetry(ctx, whURL, embed, 5)
+func sendPayloadToDiscord(ctx context.Context, webhookURL string, embed DiscordEmbed) error {
+	return sendPayloadToDiscordWithRetry(ctx, webhookURL, embed, 5)
 }
 
-func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed DiscordEmbed, retries int) error {
+func sendPayloadToDiscordWithRetry(ctx context.Context, webhookURL string, embed DiscordEmbed, retries int) error {
 	tracer := otel.Tracer("")
 
 	var span trace.Span
@@ -442,7 +437,7 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed Disc
 
 	data, _ := json.Marshal(payload)
 
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, whURL, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, webhookURL, bytes.NewReader(data))
 	if err != nil {
 		span.RecordError(err)
 
@@ -519,7 +514,7 @@ func sendPayloadToDiscordWithRetry(ctx context.Context, whURL string, embed Disc
 		time.Sleep((time.Duration(waitFor) * time.Second))
 
 		if retries > 0 {
-			return sendPayloadToDiscordWithRetry(ctx, whURL, embed, retries-1)
+			return sendPayloadToDiscordWithRetry(ctx, webhookURL, embed, retries-1)
 		}
 
 		return errFailedAfter5Retries
