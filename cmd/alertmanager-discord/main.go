@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"text/template"
 	"time"
@@ -53,16 +54,6 @@ func init() {
 var errFailedAfter5Retries = errors.New("failed to send alert after 5 retries")
 
 const alertTemplateStr string = `
-{{- define "__alert_silence_link" -}}
-    {{ .ExternalURL }}/#/silences/new?filter=%7B
-    {{- range .Alert.Labels.SortedPairs -}}
-        {{- if ne .Name "alertname" -}}
-            {{- .Name }}%3D"{{- .Value -}}"%2C%20
-        {{- end -}}
-    {{- end -}}
-    alertname%3D"{{ .Alert.Labels.alertname }}"%7D
-{{- end -}}
-
 {{- define "__alertmanager_link" -}}
   {{- $name := .ExternalURL | trimPrefix "https://" -}}
   {{- $name = $name | trimPrefix "https://" -}}
@@ -169,7 +160,7 @@ const alertTemplateStr string = `
 
 [Source]({{ .Alert.GeneratorURL }})
 {{ template "__alert_runbook_link" . }}
-[Silence]({{ template "__alert_silence_link" . }})
+[Silence]({{ .SilenceURL }})
 Sent by: {{ template "__alertmanager_link" . }}
 `
 
@@ -268,6 +259,21 @@ func getAlertname(alerts []alertmanager.Alert, payload *alertmanager.Data) strin
 	return getAlertnameFromPayload(payload)
 }
 
+func createSilenceURL(externalURL string, alert alertmanager.Alert) string {
+	baseURL := fmt.Sprintf("%s/#/silences/new?filter=", externalURL)
+	labels := "{"
+
+	for _, label := range alert.Labels.SortedPairs() {
+		labels += fmt.Sprintf("%s=\"%s\",", label.Name, label.Value)
+	}
+
+	labels = labels[:len(labels)-1]
+	labels += "}"
+	baseURL += url.QueryEscape(labels)
+
+	return baseURL
+}
+
 func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertmanager.Alert) DiscordEmbed {
 	embed := DiscordEmbed{
 		Title: fmt.Sprintf(
@@ -294,9 +300,11 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 		err := temp.Execute(&tpl, struct {
 			Alert       alertmanager.Alert
 			ExternalURL string
+			SilenceURL  string
 		}{
 			alert,
 			data.ExternalURL,
+			createSilenceURL(data.ExternalURL, alert),
 		},
 		)
 		if err != nil {
