@@ -476,6 +476,8 @@ func sendPayloadToDiscordWithRetry(
 		"alertname", payload.Embeds[0].Title,
 	)
 
+	fmt.Printf("\n%s\n", string(data))
+
 	if resp.StatusCode == 400 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -494,8 +496,6 @@ func sendPayloadToDiscordWithRetry(
 			"request_body", string(data),
 			"alertname", payload.Embeds[0].Title,
 		)
-
-		fmt.Printf("\n%s\n", string(body))
 
 		return 400, fmt.Errorf("failed to send Discord response %w", err)
 	}
