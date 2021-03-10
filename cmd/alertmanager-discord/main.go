@@ -495,6 +495,8 @@ func sendPayloadToDiscordWithRetry(
 			"alertname", payload.Embeds[0].Title,
 		)
 
+		fmt.Printf("\n%s\n", string(body))
+
 		return 400, fmt.Errorf("failed to send Discord response %w", err)
 	}
 

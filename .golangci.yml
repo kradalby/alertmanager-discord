@@ -17,3 +17,4 @@ linters:
     - exhaustivestruct
     - gochecknoglobals
     - gochecknoinits
+    - forbidigo
