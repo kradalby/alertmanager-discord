@@ -1,4 +1,4 @@
-FROM golang:1.16.1 as builder
+FROM golang:1.16.2 as builder
 WORKDIR /app
 ADD . .
 RUN CGO_ENABLED=0 GOOS=linux make build
