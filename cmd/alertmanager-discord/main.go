@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 	"text/template"
 	"time"
@@ -259,20 +258,20 @@ func getAlertname(alerts []alertmanager.Alert, payload *alertmanager.Data) strin
 	return getAlertnameFromPayload(payload)
 }
 
-func createSilenceURL(externalURL string, alert alertmanager.Alert) string {
-	baseURL := fmt.Sprintf("%s/#/silences/new?filter=", externalURL)
-	labels := "{"
+// func createSilenceURL(externalURL string, alert alertmanager.Alert) string {
+// 	baseURL := fmt.Sprintf("%s/#/silences/new?filter=", externalURL)
+// 	labels := "{"
 
-	for _, label := range alert.Labels.SortedPairs() {
-		labels += fmt.Sprintf("%s=\"%s\",", label.Name, label.Value)
-	}
+// 	for _, label := range alert.Labels.SortedPairs() {
+// 		labels += fmt.Sprintf("%s=\"%s\",", label.Name, label.Value)
+// 	}
 
-	labels = labels[:len(labels)-1]
-	labels += "}"
-	baseURL += url.QueryEscape(labels)
+// 	labels = labels[:len(labels)-1]
+// 	labels += "}"
+// 	baseURL += url.QueryEscape(labels)
 
-	return baseURL
-}
+// 	return baseURL
+// }
 
 func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertmanager.Alert) DiscordEmbed {
 	embed := DiscordEmbed{
@@ -304,7 +303,8 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 		}{
 			alert,
 			data.ExternalURL,
-			createSilenceURL(data.ExternalURL, alert),
+			// createSilenceURL(data.ExternalURL, alert),
+			"",
 		},
 		)
 		if err != nil {
