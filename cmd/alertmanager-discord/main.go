@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"text/template"
 	"time"
@@ -21,6 +22,7 @@ import (
 
 	alertmanager "github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	promModel "github.com/prometheus/common/model"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -36,6 +38,36 @@ var (
 		},
 		[]string{"code", "method", "handler"},
 	)
+
+	alertsPayloadProcessed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_discord_processed_alert_payloads_total",
+		Help: "The total number of processed alert payloads",
+	})
+	alertsPayloadReceived = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_discord_alert_payloads_received_total",
+		Help: "The total number of alert payloads received from Alertmanager",
+	})
+	alertsProcessed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_discord_processed_alerts_total",
+		Help: "The total number of processed alerts",
+	})
+	alertsReceived = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_discord_alerts_received_total",
+		Help: "The total number of alerts received from Alertmanager",
+	})
+	alertsSent = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_discord_alerts_sent_total",
+		Help: "The total number of alerts sent to Discord webhook",
+	})
+	alertsWithoutSilentURLSent = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_discord_alerts_sent_without_silence_total",
+		Help: "The total number of alerts sent to Discord webhook without silence URL",
+	})
+	alertsFailedSent = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "alertmanager_discord_alerts_sent_failed_total",
+		Help: "The total number of alerts that failed to send Discord webhook",
+	}, []string{"code"})
+
 	logger        log.Logger
 	alertTemplate *template.Template
 )
@@ -159,7 +191,9 @@ const alertTemplateStr string = `
 
 [Source]({{ .Alert.GeneratorURL }})
 {{ template "__alert_runbook_link" . }}
+{{- if .SilenceURL }}
 [Silence]({{ .SilenceURL }})
+{{- end }}
 Sent by: {{ template "__alertmanager_link" . }}
 `
 
@@ -258,22 +292,27 @@ func getAlertname(alerts []alertmanager.Alert, payload *alertmanager.Data) strin
 	return getAlertnameFromPayload(payload)
 }
 
-// func createSilenceURL(externalURL string, alert alertmanager.Alert) string {
-// 	baseURL := fmt.Sprintf("%s/#/silences/new?filter=", externalURL)
-// 	labels := "{"
+func createSilenceURL(externalURL string, alert alertmanager.Alert) string {
+	baseURL := fmt.Sprintf("%s/#/silences/new?filter=", externalURL)
+	labels := "{"
 
-// 	for _, label := range alert.Labels.SortedPairs() {
-// 		labels += fmt.Sprintf("%s=\"%s\",", label.Name, label.Value)
-// 	}
+	for _, label := range alert.Labels.SortedPairs() {
+		labels += fmt.Sprintf("%s=\"%s\",", label.Name, label.Value)
+	}
 
-// 	labels = labels[:len(labels)-1]
-// 	labels += "}"
-// 	baseURL += url.QueryEscape(labels)
+	labels = labels[:len(labels)-1]
+	labels += "}"
+	baseURL += url.QueryEscape(labels)
 
-// 	return baseURL
-// }
+	return baseURL
+}
 
-func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertmanager.Alert) DiscordEmbed {
+func newEmbed(
+	temp *template.Template,
+	data *alertmanager.Data,
+	alerts []alertmanager.Alert,
+	withSilence bool,
+) DiscordEmbed {
 	embed := DiscordEmbed{
 		Title: fmt.Sprintf(
 			"%s  [%d]  %s",
@@ -294,6 +333,11 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 	}
 
 	for _, alert := range alerts {
+		silenceURL := ""
+		if withSilence {
+			silenceURL = createSilenceURL(data.ExternalURL, alert)
+		}
+
 		var tpl bytes.Buffer
 
 		err := temp.Execute(&tpl, struct {
@@ -303,8 +347,7 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 		}{
 			alert,
 			data.ExternalURL,
-			// createSilenceURL(data.ExternalURL, alert),
-			"",
+			silenceURL,
 		},
 		)
 		if err != nil {
@@ -383,6 +426,8 @@ func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
 	webhookURL := os.Getenv("DISCORD_WEBHOOK")
 	span := trace.SpanFromContext(r.Context())
 
+	alertsPayloadReceived.Inc()
+
 	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		level.Error(logger).Log(
@@ -413,9 +458,9 @@ func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	for _, alert := range alertmanagerPayload.Alerts {
-		embed := newEmbed(alertTemplate, alertmanagerPayload, []alertmanager.Alert{alert})
+		alertsReceived.Inc()
 
-		status, err := sendPayloadToDiscord(r.Context(), webhookURL, embed)
+		status, err := sendPayloadToDiscord(r.Context(), webhookURL, alertmanagerPayload, alert)
 		if err != nil {
 			level.Error(logger).Log(
 				"traceID", span.SpanContext().TraceID,
@@ -425,17 +470,33 @@ func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
 			)
 			span.RecordError(err)
 		}
+
+		alertsProcessed.Inc()
+
+		// Space each post out a bit so we dont get too many 429.
+		time.Sleep((time.Duration(1) * time.Second))
 	}
+
+	alertsPayloadProcessed.Inc()
 }
 
-func sendPayloadToDiscord(ctx context.Context, webhookURL string, embed DiscordEmbed) (int, error) {
-	return sendPayloadToDiscordWithRetry(ctx, webhookURL, embed, 5)
+func sendPayloadToDiscord(
+	ctx context.Context,
+	webhookURL string,
+	data *alertmanager.Data,
+	alert alertmanager.Alert,
+) (int, error) {
+	alertsSent.Inc()
+
+	return sendPayloadToDiscordWithRetry(ctx, webhookURL, data, alert, true, 5)
 }
 
 func sendPayloadToDiscordWithRetry(
 	ctx context.Context,
 	webhookURL string,
-	embed DiscordEmbed,
+	alertmanagerPayload *alertmanager.Data,
+	alert alertmanager.Alert,
+	withSilenceURL bool,
 	retries int) (int, error) {
 	tracer := otel.Tracer("")
 
@@ -443,6 +504,8 @@ func sendPayloadToDiscordWithRetry(
 	_, span = tracer.Start(ctx, "sendPayloadToDiscord")
 
 	defer span.End()
+
+	embed := newEmbed(alertTemplate, alertmanagerPayload, []alertmanager.Alert{alert}, withSilenceURL)
 
 	payload := DiscordWebhookPayload{
 		Embeds: []DiscordEmbed{embed},
@@ -476,9 +539,9 @@ func sendPayloadToDiscordWithRetry(
 		"alertname", payload.Embeds[0].Title,
 	)
 
-	fmt.Printf("\n%s\n", string(data))
-
 	if resp.StatusCode == 400 {
+		alertsFailedSent.WithLabelValues("code", "400").Inc()
+
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			span.RecordError(err)
@@ -497,10 +560,16 @@ func sendPayloadToDiscordWithRetry(
 			"alertname", payload.Embeds[0].Title,
 		)
 
+		if withSilenceURL {
+			return sendPayloadToDiscordWithRetry(ctx, webhookURL, alertmanagerPayload, alert, !withSilenceURL, retries)
+		}
+
 		return 400, fmt.Errorf("failed to send Discord response %w", err)
 	}
 
 	if resp.StatusCode == 429 {
+		alertsFailedSent.WithLabelValues("code", "429").Inc()
+
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			span.RecordError(err)
@@ -533,10 +602,25 @@ func sendPayloadToDiscordWithRetry(
 		time.Sleep((time.Duration(waitFor) * time.Second))
 
 		if retries > 0 {
-			return sendPayloadToDiscordWithRetry(ctx, webhookURL, embed, retries-1)
+			return sendPayloadToDiscordWithRetry(ctx, webhookURL, alertmanagerPayload, alert, withSilenceURL, retries-1)
 		}
 
 		return 429, errFailedAfter5Retries
+	}
+
+	if !withSilenceURL {
+		silenceURL := createSilenceURL(alertmanagerPayload.ExternalURL, alert)
+		level.Info(logger).Log(
+			"traceID", span.SpanContext().TraceID,
+			"msg", "Successfully sent alert _without_ silence URL",
+			"silenceURL", silenceURL,
+			"status", resp.Status,
+			"status_code", resp.StatusCode,
+			"proto", resp.Proto,
+			"alertname", payload.Embeds[0].Title,
+		)
+
+		alertsWithoutSilentURLSent.Inc()
 	}
 
 	return 200, nil
