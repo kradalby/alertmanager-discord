@@ -540,7 +540,7 @@ func sendPayloadToDiscordWithRetry(
 	)
 
 	if resp.StatusCode == 400 {
-		alertsFailedSent.WithLabelValues("code", "400").Inc()
+		alertsFailedSent.WithLabelValues("400").Inc()
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -568,7 +568,7 @@ func sendPayloadToDiscordWithRetry(
 	}
 
 	if resp.StatusCode == 429 {
-		alertsFailedSent.WithLabelValues("code", "429").Inc()
+		alertsFailedSent.WithLabelValues("429").Inc()
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
