@@ -11,7 +11,7 @@ require (
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/mitchellh/copystructure v1.1.1 // indirect
 	github.com/prometheus/alertmanager v0.21.0
-	github.com/prometheus/client_golang v1.9.0
+	github.com/prometheus/client_golang v1.10.0
 	github.com/prometheus/common v0.19.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.18.0
 	go.opentelemetry.io/contrib/propagators v0.18.0
