@@ -76,6 +76,10 @@ const alertTemplateStr string = `
   {{- end -}}
 {{- end -}}
 
+{{- define "__alert_mention_team" -}}
+	{{ unescape .Alert.Annotations.mention }}
+{{- end -}}
+
 {{- define "__alert_instance" -}}
   {{- if .Alert.Labels.hpa }}
 	**Resources:**
@@ -134,7 +138,7 @@ const alertTemplateStr string = `
 {{ template "__alert_severity" . }}
 
 **Team Responsible:**
-:firefighter:
+:firefighter: {{ template "__alert_mention_team" . }}
 
 `
 
@@ -179,6 +183,11 @@ type DiscordWebhookPayload struct {
 	Embeds    []DiscordEmbed `json:"embeds,omitempty"`
 }
 
+type DiscordAlert struct {
+	Alert       alertmanager.Alert
+	ExternalURL string
+}
+
 func getColour(alert *alertmanager.Alert) int {
 	switch alert.Status {
 	case string(promModel.AlertFiring):
@@ -219,6 +228,7 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 			len(alerts),
 			getAlertname(data),
 		),
+
 		URL:   data.ExternalURL,
 		Color: getColour(&alerts[0]),
 	}
@@ -234,12 +244,9 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 	for _, alert := range alerts {
 		var tpl bytes.Buffer
 
-		err := temp.Execute(&tpl, struct {
-			Alert       alertmanager.Alert
-			ExternalURL string
-		}{
-			alert,
-			data.ExternalURL,
+		err := temp.Execute(&tpl, DiscordAlert{
+			Alert:       alert,
+			ExternalURL: data.ExternalURL,
 		},
 		)
 		if err != nil {
@@ -258,6 +265,10 @@ func newEmbed(temp *template.Template, data *alertmanager.Data, alerts []alertma
 	return embed
 }
 
+func unescape(s string) template.HTML {
+	return template.HTML(s)
+}
+
 func main() {
 	webhookURL := os.Getenv("DISCORD_WEBHOOK")
 	whURL := flag.String("webhook.url", webhookURL, "")
@@ -271,6 +282,9 @@ func main() {
 	alertTemplate := template.Must(
 		template.New("alertTemplate").
 			Funcs(sprig.FuncMap()).
+			Funcs(template.FuncMap{
+				"unescape": unescape,
+			}).
 			Parse(alertTemplateStr),
 	)
 
@@ -283,6 +297,7 @@ func main() {
 		}
 
 		alertmanagerPayload := &alertmanager.Data{}
+
 		err = json.Unmarshal(b, &alertmanagerPayload)
 		if err != nil {
 			panic(err)
@@ -305,7 +320,6 @@ func main() {
 		}
 
 		data, _ := json.Marshal(payload)
-
 		req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, *whURL, bytes.NewReader(data))
 		if err != nil {
 			log.Printf("error: failed to create request %s", err)

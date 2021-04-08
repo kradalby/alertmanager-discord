@@ -45,7 +45,7 @@ Icon
 .Trashes
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
-
+.payload_evermos.json
 # Directories potentially created on remote AFP share
 .AppleDB
 .AppleDesktop
