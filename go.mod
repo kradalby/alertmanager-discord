@@ -17,5 +17,5 @@ require (
 	go.opentelemetry.io/contrib/propagators v0.19.0
 	go.opentelemetry.io/otel v0.19.0
 	go.opentelemetry.io/otel/exporters/trace/jaeger v0.19.0
-	go.opentelemetry.io/otel/trace v0.19.0
+	go.opentelemetry.io/otel/trace v0.20.0
 )
