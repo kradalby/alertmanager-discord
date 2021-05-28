@@ -10,7 +10,7 @@ require (
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/mitchellh/copystructure v1.1.1 // indirect
-	github.com/prometheus/alertmanager v0.22.0
+	github.com/prometheus/alertmanager v0.22.1
 	github.com/prometheus/client_golang v1.10.0
 	github.com/prometheus/common v0.25.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.20.0
