@@ -12,7 +12,7 @@ require (
 	github.com/mitchellh/copystructure v1.1.1 // indirect
 	github.com/prometheus/alertmanager v0.22.2
 	github.com/prometheus/client_golang v1.11.0
-	github.com/prometheus/common v0.29.0
+	github.com/prometheus/common v0.30.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.20.0
 	go.opentelemetry.io/contrib/propagators v0.20.0
 	go.opentelemetry.io/otel v0.20.0
