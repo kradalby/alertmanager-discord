@@ -1,6 +1,6 @@
 module github.com/kradalby/alertmanager-discord
 
-go 1.16
+go 1.22.1
 
 require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
