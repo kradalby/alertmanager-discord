@@ -16,8 +16,8 @@ require (
 	go.opentelemetry.io/contrib v0.20.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.30.0
 	go.opentelemetry.io/contrib/propagators v1.0.0
-	go.opentelemetry.io/otel v1.5.0
-	go.opentelemetry.io/otel/exporters/trace/jaeger v0.20.0
+	go.opentelemetry.io/otel v1.31.0
+	go.opentelemetry.io/otel/exporters/trace/jaeger v0.20.1
 	go.opentelemetry.io/otel/internal/metric v0.24.0 // indirect
-	go.opentelemetry.io/otel/trace v1.5.0
+	go.opentelemetry.io/otel/trace v1.31.0
 )
