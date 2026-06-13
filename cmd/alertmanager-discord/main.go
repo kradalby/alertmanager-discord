@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,12 +14,8 @@ import (
 	"time"
 
 	"github.com/Masterminds/sprig"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
-
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	alertmanager "github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -27,7 +23,13 @@ import (
 	promModel "github.com/prometheus/common/model"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	jaegerPropagator "go.opentelemetry.io/contrib/propagators/jaeger"
-	jaegerExporter "go.opentelemetry.io/otel/exporters/trace/jaeger"
+	"go.opentelemetry.io/otel"
+	jaegerExporter "go.opentelemetry.io/otel/exporters/jaeger" //nolint:staticcheck // jaeger exporter is deprecated upstream but is the supported path for this app's existing jaeger pipeline
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -35,6 +37,7 @@ var (
 		prometheus.CounterOpts{
 			Namespace: "http",
 			Name:      "requests_total",
+			Help:      "The total number of HTTP requests handled, partitioned by status code, method and handler",
 		},
 		[]string{"code", "method", "handler"},
 	)
@@ -367,18 +370,22 @@ func newEmbed(
 }
 
 func initTracer(logger log.Logger) func() {
-	flush, err := jaegerExporter.InstallNewPipeline(
-		jaegerExporter.WithCollectorEndpoint(""),
-		jaegerExporter.WithProcess(jaegerExporter.Process{
-			ServiceName: "alertmanager-discord",
-		}),
-		jaegerExporter.WithDisabled(true),
-		jaegerExporter.WithDisabledFromEnv(),
+	exporter, err := jaegerExporter.New(
+		jaegerExporter.WithCollectorEndpoint(),
 	)
 	if err != nil {
 		level.Error(logger).Log("err", err)
 		os.Exit(1)
 	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName("alertmanager-discord"),
+		)),
+	)
+	otel.SetTracerProvider(tp)
 
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
@@ -386,7 +393,11 @@ func initTracer(logger log.Logger) func() {
 		jaegerPropagator.Jaeger{},
 	))
 
-	return flush
+	return func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			level.Error(logger).Log("err", err)
+		}
+	}
 }
 
 func main() {
@@ -416,19 +427,24 @@ func main() {
 	handler("/webhook", "alertmanagerWebhook", alertmanagerHandler)
 	http.Handle("/metrics", promhttp.Handler())
 
-	err := http.ListenAndServe(":9094", nil)
+	server := &http.Server{
+		Addr:              ":9094",
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	err := server.ListenAndServe()
 	if err != nil {
 		panic(err)
 	}
 }
 
-func alertmanagerHandler(w http.ResponseWriter, r *http.Request) {
+func alertmanagerHandler(_ http.ResponseWriter, r *http.Request) {
 	webhookURL := os.Getenv("DISCORD_WEBHOOK")
 	span := trace.SpanFromContext(r.Context())
 
 	alertsPayloadReceived.Inc()
 
-	b, err := ioutil.ReadAll(r.Body)
+	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		level.Error(logger).Log(
 			"traceID", span.SpanContext().TraceID,
@@ -497,7 +513,8 @@ func sendPayloadToDiscordWithRetry(
 	alertmanagerPayload *alertmanager.Data,
 	alert alertmanager.Alert,
 	withSilenceURL bool,
-	retries int) (int, error) {
+	retries int,
+) (int, error) {
 	tracer := otel.Tracer("")
 
 	var span trace.Span
@@ -511,9 +528,14 @@ func sendPayloadToDiscordWithRetry(
 		Embeds: []DiscordEmbed{embed},
 	}
 
-	data, _ := json.Marshal(payload)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		span.RecordError(err)
 
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPost, webhookURL, bytes.NewReader(data))
+		return 500, fmt.Errorf("failed to marshal Discord payload %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(data))
 	if err != nil {
 		span.RecordError(err)
 
@@ -539,10 +561,10 @@ func sendPayloadToDiscordWithRetry(
 		"alertname", payload.Embeds[0].Title,
 	)
 
-	if resp.StatusCode == 400 {
+	if resp.StatusCode == http.StatusBadRequest {
 		alertsFailedSent.WithLabelValues("400").Inc()
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			span.RecordError(err)
 
@@ -567,10 +589,10 @@ func sendPayloadToDiscordWithRetry(
 		return 400, fmt.Errorf("failed to send Discord response %w", err)
 	}
 
-	if resp.StatusCode == 429 {
+	if resp.StatusCode == http.StatusTooManyRequests {
 		alertsFailedSent.WithLabelValues("429").Inc()
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			span.RecordError(err)
 
@@ -649,7 +671,7 @@ func root(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-type", "text/html")
+	w.Header().Set("Content-Type", "text/html")
 
 	_, err := w.Write([]byte(`
 	<p>Alertmanager to Discord</p>
