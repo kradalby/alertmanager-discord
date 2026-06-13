@@ -343,18 +343,19 @@ func newEmbed(
 
 		var tpl bytes.Buffer
 
-		err := temp.Execute(&tpl, struct {
-			Alert       alertmanager.Alert
-			ExternalURL string
-			SilenceURL  string
-		}{
-			alert,
-			data.ExternalURL,
-			silenceURL,
-		},
+		err := temp.Execute(
+			&tpl, struct {
+				Alert       alertmanager.Alert
+				ExternalURL string
+				SilenceURL  string
+			}{
+				alert,
+				data.ExternalURL,
+				silenceURL,
+			},
 		)
 		if err != nil {
-			level.Error(logger).Log("msg", fmt.Sprintf("error: failed to build message from template %s", err))
+			_ = level.Error(logger).Log("msg", fmt.Sprintf("error: failed to build message from template %s", err))
 		}
 
 		field := DiscordEmbedField{
@@ -374,7 +375,7 @@ func initTracer(logger log.Logger) func() {
 		jaegerExporter.WithCollectorEndpoint(),
 	)
 	if err != nil {
-		level.Error(logger).Log("err", err)
+		_ = level.Error(logger).Log("err", err)
 		os.Exit(1)
 	}
 
@@ -395,7 +396,7 @@ func initTracer(logger log.Logger) func() {
 
 	return func() {
 		if err := tp.Shutdown(context.Background()); err != nil {
-			level.Error(logger).Log("err", err)
+			_ = level.Error(logger).Log("err", err)
 		}
 	}
 }
@@ -409,11 +410,11 @@ func main() {
 
 	webhookEnv := os.Getenv("DISCORD_WEBHOOK")
 	if webhookEnv == "" {
-		level.Error(logger).Log("msg", "environment variable DISCORD_WEBHOOK not found")
+		_ = level.Error(logger).Log("msg", "environment variable DISCORD_WEBHOOK not found")
 		os.Exit(1)
 	}
 
-	level.Info(logger).Log("msg", "Listening on 0.0.0.0:9094")
+	_ = level.Info(logger).Log("msg", "Listening on 0.0.0.0:9094")
 
 	handler := func(path, name string, f http.HandlerFunc) {
 		http.HandleFunc(path, promhttp.InstrumentHandlerCounter(
@@ -446,7 +447,7 @@ func alertmanagerHandler(_ http.ResponseWriter, r *http.Request) {
 
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
-		level.Error(logger).Log(
+		_ = level.Error(logger).Log(
 			"traceID", span.SpanContext().TraceID,
 			"msg", fmt.Sprintf("failed to read Alertmanager request %s", err),
 		)
@@ -457,13 +458,14 @@ func alertmanagerHandler(_ http.ResponseWriter, r *http.Request) {
 
 	err = json.Unmarshal(b, &alertmanagerPayload)
 	if err != nil {
-		level.Error(logger).Log("traceID", span.SpanContext().TraceID,
+		_ = level.Error(logger).Log(
+			"traceID", span.SpanContext().TraceID,
 			"msg", fmt.Sprintf("failed to unmarshal alert %s", err),
 		)
 		span.RecordError(err)
 	}
 
-	level.Info(logger).Log(
+	_ = level.Info(logger).Log(
 		"traceID", span.SpanContext().TraceID,
 		"msg", "received alert",
 		"source", alertmanagerPayload.ExternalURL,
@@ -478,7 +480,7 @@ func alertmanagerHandler(_ http.ResponseWriter, r *http.Request) {
 
 		status, err := sendPayloadToDiscord(r.Context(), webhookURL, alertmanagerPayload, alert)
 		if err != nil {
-			level.Error(logger).Log(
+			_ = level.Error(logger).Log(
 				"traceID", span.SpanContext().TraceID,
 				"webhookURL", webhookURL,
 				"discord_status", status,
@@ -550,9 +552,9 @@ func sendPayloadToDiscordWithRetry(
 
 		return 500, fmt.Errorf("failed to post message to discord %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
-	level.Info(logger).Log(
+	_ = level.Info(logger).Log(
 		"traceID", span.SpanContext().TraceID,
 		"msg", "response received",
 		"status", resp.Status,
@@ -571,7 +573,7 @@ func sendPayloadToDiscordWithRetry(
 			return 400, fmt.Errorf("failed to read Discord response %w", err)
 		}
 
-		level.Error(logger).Log(
+		_ = level.Error(logger).Log(
 			"traceID", span.SpanContext().TraceID,
 			"msg", "Bad body",
 			"status", resp.Status,
@@ -603,7 +605,8 @@ func sendPayloadToDiscordWithRetry(
 
 		err = json.Unmarshal(body, &ratelimitResponse)
 		if err != nil {
-			level.Error(logger).Log("traceID", span.SpanContext().TraceID,
+			_ = level.Error(logger).Log(
+				"traceID", span.SpanContext().TraceID,
 				"msg", fmt.Sprintf("failed to unmarshal ratelimit response %s", err),
 			)
 			span.RecordError(err)
@@ -611,7 +614,7 @@ func sendPayloadToDiscordWithRetry(
 
 		waitFor := ratelimitResponse.RetryAfter + 1
 
-		level.Info(logger).Log(
+		_ = level.Info(logger).Log(
 			"traceID", span.SpanContext().TraceID,
 			"msg", "received 'too many requests', backing off and retrieing",
 			"status", resp.Status,
@@ -632,7 +635,7 @@ func sendPayloadToDiscordWithRetry(
 
 	if !withSilenceURL {
 		silenceURL := createSilenceURL(alertmanagerPayload.ExternalURL, alert)
-		level.Info(logger).Log(
+		_ = level.Info(logger).Log(
 			"traceID", span.SpanContext().TraceID,
 			"msg", "Successfully sent alert _without_ silence URL",
 			"silenceURL", silenceURL,
