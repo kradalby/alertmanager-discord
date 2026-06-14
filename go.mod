@@ -1,6 +1,6 @@
 module github.com/kradalby/alertmanager-discord
 
-go 1.21
+go 1.26.4
 
 require (
 	github.com/Masterminds/sprig v2.22.0+incompatible
